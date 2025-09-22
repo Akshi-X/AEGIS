@@ -35,8 +35,12 @@ export function DashboardNav() {
   return (
     <div className="flex-1 overflow-auto p-2">
        <SidebarMenu>
-        {isClient ? (
-          navItems.map((item) => (
+        {!isClient && (
+          <>
+            {navItems.map((item) => <SidebarMenuSkeleton key={item.href} showIcon />)}
+          </>
+        )}
+        {isClient && navItems.map((item) => (
             <SidebarMenuItem key={item.href}>
               <Link href={item.href} passHref>
                 <SidebarMenuButton
@@ -54,12 +58,7 @@ export function DashboardNav() {
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
-          ))
-        ) : (
-          <>
-            {navItems.map((item) => <SidebarMenuSkeleton key={item.href} showIcon />)}
-          </>
-        )}
+          ))}
       </SidebarMenu>
     </div>
   );
