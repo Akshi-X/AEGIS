@@ -1,5 +1,6 @@
 
-import { getPcs } from '@/lib/actions';
+'use client';
+import { getPcs, updatePcStatus, deletePc } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -19,9 +20,44 @@ import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { useEffect, useState, useTransition } from 'react';
+import type { PC } from '@/lib/types';
+import type { WithId } from 'mongodb';
+import { useToast } from '@/hooks/use-toast';
 
-export default async function PCsPage() {
-  const pcs = await getPcs();
+
+export default function PCsPage() {
+  const [pcs, setPcs] = useState<WithId<PC>[]>([]);
+  const [isPending, startTransition] = useTransition();
+  const { toast } = useToast();
+
+  const fetchPcs = () => {
+    getPcs().then(setPcs);
+  };
+
+  useEffect(() => {
+    fetchPcs();
+  }, []);
+
+  const handleAction = (pcId: string, action: 'approve' | 'reject' | 'delete') => {
+    startTransition(async () => {
+        let result;
+        if (action === 'approve') {
+            result = await updatePcStatus(pcId, 'Approved');
+        } else if (action === 'reject') {
+            result = await updatePcStatus(pcId, 'Rejected');
+        } else if (action === 'delete') {
+            result = await deletePc(pcId);
+        }
+
+        if(result?.success) {
+            toast({ title: 'Success', description: `PC has been ${action}d.` });
+            fetchPcs();
+        } else {
+            toast({ title: 'Error', description: result?.error || 'An error occurred.', variant: 'destructive' });
+        }
+    });
+  }
 
   return (
     <Card>
@@ -68,19 +104,19 @@ export default async function PCsPage() {
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" className="h-8 w-8 p-0">
+                      <Button variant="ghost" className="h-8 w-8 p-0" disabled={isPending}>
                         <span className="sr-only">Open menu</span>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       {pc.status !== 'Approved' && (
-                        <DropdownMenuItem>Approve</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleAction(pc._id as string, 'approve')}>Approve</DropdownMenuItem>
                       )}
                       {pc.status !== 'Rejected' && (
-                        <DropdownMenuItem>Reject</DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => handleAction(pc._id as string, 'reject')}>Reject</DropdownMenuItem>
                       )}
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem className="text-destructive" onClick={() => handleAction(pc._id as string, 'delete')}>
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>

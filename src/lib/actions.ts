@@ -1,3 +1,4 @@
+
 'use server';
 
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
@@ -7,6 +8,7 @@ import { revalidatePath } from 'next/cache';
 import { WithId, Document } from 'mongodb';
 import type { Question, Student, PC, Exam } from './types';
 import { redirect } from 'next/navigation';
+import { cookies } from 'next/headers';
 
 const questionSchema = z.object({
   questionText: z.string().min(10, 'Question text must be at least 10 characters long.'),
@@ -175,5 +177,89 @@ export async function getExams(): Promise<WithId<Exam>[]> {
     } catch (error) {
         console.error('Error fetching exams:', error);
         return [];
+    }
+}
+
+// Authentication Actions
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
+
+export async function authenticate(prevState: any, formData: FormData) {
+  const password = formData.get('password');
+  if (password === ADMIN_PASSWORD) {
+    cookies().set('auth', 'true', { httpOnly: true, path: '/' });
+    redirect('/dashboard');
+  } else {
+    return {
+      message: 'Incorrect password. Please try again.',
+    };
+  }
+}
+
+export async function logout() {
+  cookies().delete('auth');
+  redirect('/login');
+}
+
+
+// PC Registration
+function generateRandomString(length: number) {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+export async function registerPc(prevState: any, formData: FormData) {
+    const pcName = formData.get('pcName') as string;
+    
+    if (!pcName || pcName.trim().length < 3) {
+        return { message: "PC name must be at least 3 characters.", status: "error" };
+    }
+
+    try {
+        const pcsCollection = await getPcsCollection();
+        
+        const newPc: Omit<PC, '_id'> = {
+            name: pcName,
+            ipAddress: 'N/A', // IP address will be captured later
+            status: 'Pending',
+            uniqueIdentifier: `pc-id-${generateRandomString(8)}`
+        };
+
+        await pcsCollection.insertOne(newPc);
+        revalidatePath('/dashboard/pcs');
+
+        return { message: "Your PC registration request has been submitted.", status: "success" };
+    } catch (error) {
+        console.error('PC Registration Error:', error);
+        return { message: "An error occurred while registering your PC. Please try again.", status: "error" };
+    }
+}
+
+export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejected') {
+  try {
+    const pcsCollection = await getPcsCollection();
+    const { ObjectId } = await import('mongodb');
+    await pcsCollection.updateOne({ _id: new ObjectId(pcId) }, { $set: { status } });
+    revalidatePath('/dashboard/pcs');
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating PC status:', error);
+    return { error: 'Failed to update PC status.' };
+  }
+}
+
+export async function deletePc(pcId: string) {
+    try {
+        const pcsCollection = await getPcsCollection();
+        const { ObjectId } = await import('mongodb');
+        await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
+        revalidatePath('/dashboard/pcs');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting PC:', error);
+        return { error: 'Failed to delete PC.' };
     }
 }

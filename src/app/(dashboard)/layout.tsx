@@ -1,10 +1,10 @@
+
 import React from 'react';
 import {
   Sidebar,
   SidebarContent,
   SidebarHeader,
   SidebarInset,
-  SidebarProvider,
   SidebarFooter,
 } from '@/components/ui/sidebar';
 import { DashboardNav } from '@/components/dashboard-nav';
@@ -14,6 +14,8 @@ import { Button } from '@/components/ui/button';
 import { Settings, LogOut } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { User } from 'lucide-react';
+import { logout } from '@/lib/actions';
+
 
 export default function DashboardLayout({
   children,
@@ -44,9 +46,11 @@ export default function DashboardLayout({
                     <span className="truncate text-sm font-medium text-sidebar-foreground">Admin</span>
                     <span className="truncate text-xs text-sidebar-foreground/70">admin@examlab.com</span>
                 </div>
-                <Button variant="ghost" size="icon" className="ml-auto size-7 shrink-0 text-sidebar-foreground/70">
-                    <LogOut className="size-4" />
-                </Button>
+                <form action={logout} className="ml-auto">
+                  <Button variant="ghost" size="icon" className="size-7 shrink-0 text-sidebar-foreground/70">
+                      <LogOut className="size-4" />
+                  </Button>
+                </form>
             </div>
         </SidebarFooter>
       </Sidebar>

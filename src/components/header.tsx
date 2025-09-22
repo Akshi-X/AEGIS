@@ -1,6 +1,7 @@
+
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Search, User } from 'lucide-react';
+import { Search, User, LogOut } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -11,6 +12,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { logout } from '@/lib/actions';
 
 export function Header() {
   return (
@@ -45,7 +47,14 @@ export function Header() {
             <DropdownMenuItem>Settings</DropdownMenuItem>
             <DropdownMenuItem>Support</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Logout</DropdownMenuItem>
+             <form action={logout} className="w-full">
+                <DropdownMenuItem asChild>
+                    <button type="submit" className="w-full">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        <span>Logout</span>
+                    </button>
+                </DropdownMenuItem>
+             </form>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
