@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useActionState, useFormStatus } from 'react';
+import { useState, useEffect } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -31,24 +31,11 @@ const questionFormSchema = z.object({
 
 type QuestionFormValues = z.infer<typeof questionFormSchema>;
 
-const initialState = {
-  message: '',
-};
-
-function AiSuggestButton({ formAction }: { formAction: (payload: FormData) => void }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button type="submit" formAction={formAction} disabled={pending}>
-      {pending ? 'Thinking...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest with AI</>}
-    </Button>
-  );
-}
-
 export function QuestionForm() {
-  const [formState, formAction] = useActionState(getAiSuggestions, initialState);
   const { toast } = useToast();
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionFormSchema),
@@ -67,17 +54,31 @@ export function QuestionForm() {
     control: form.control,
     name: "options",
   });
-
-  useEffect(() => {
-    if (formState.message === 'success' && formState.suggestions) {
-      form.setValue('category', formState.suggestions.difficulty);
-      setTags(formState.suggestions.tags);
-      form.setValue('tags', formState.suggestions.tags);
-      toast({ title: 'AI Suggestions Applied', description: 'Difficulty and tags have been populated.' });
-    } else if (formState.message && formState.message !== 'success') {
-      toast({ title: 'Error', description: formState.message, variant: 'destructive' });
+  
+  const handleAiSuggest = async () => {
+    const questionText = form.getValues('questionText');
+    if(questionText.length < 10) {
+        toast({ title: 'Error', description: 'Question text must be at least 10 characters.', variant: 'destructive' });
+        return;
     }
-  }, [formState, form, toast]);
+
+    setIsSuggesting(true);
+    try {
+        const result = await getAiSuggestions({ questionText });
+        if (result.suggestions) {
+            form.setValue('category', result.suggestions.difficulty);
+            setTags(result.suggestions.tags);
+            form.setValue('tags', result.suggestions.tags);
+            toast({ title: 'AI Suggestions Applied', description: 'Difficulty and tags have been populated.' });
+        } else if (result.message) {
+            toast({ title: 'Error', description: result.message, variant: 'destructive' });
+        }
+    } catch (error) {
+         toast({ title: 'Error', description: 'Failed to get AI suggestions. Please try again later.', variant: 'destructive' });
+    } finally {
+        setIsSuggesting(false);
+    }
+  }
 
   const addTag = () => {
     if (newTag && !tags.includes(newTag)) {
@@ -138,7 +139,9 @@ export function QuestionForm() {
                 />
               </CardContent>
               <CardFooter>
-                 <AiSuggestButton formAction={formAction} />
+                 <Button type="button" onClick={handleAiSuggest} disabled={isSuggesting}>
+                    {isSuggesting ? 'Thinking...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest with AI</>}
+                </Button>
               </CardFooter>
             </Card>
 
@@ -314,5 +317,7 @@ export function QuestionForm() {
     </Form>
   );
 }
+
+    
 
     

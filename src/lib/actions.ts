@@ -34,7 +34,7 @@ type FormState = {
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
         const adminLogsCollection = await getAdminLogsCollection();
-        const adminCookie = await cookies().get('admin_user');
+        const adminCookie = cookies().get('admin_user');
         const admin = adminCookie ? JSON.parse(adminCookie.value) : { username: 'System' };
         
         await adminLogsCollection.insertOne({
@@ -50,10 +50,8 @@ async function logAdminAction(action: string, details: Record<string, any> = {})
 }
 
 
-export async function getAiSuggestions(prevState: FormState, formData: FormData): Promise<FormState> {
-  const validatedFields = z.object({ questionText: z.string() }).safeParse({
-    questionText: formData.get('questionText'),
-  });
+export async function getAiSuggestions(input: {questionText: string}): Promise<FormState> {
+  const validatedFields = z.object({ questionText: z.string() }).safeParse(input);
 
   if (!validatedFields.success) {
     return {
@@ -238,8 +236,8 @@ export async function authenticate(prevState: any, formData: FormData) {
 
     if (admin && admin.password === password) {
         const adminUser = { username: admin.username, role: admin.role };
-        await cookies().set('auth', 'true', { path: '/' });
-        await cookies().set('admin_user', JSON.stringify(adminUser), { path: '/' });
+        cookies().set('auth', 'true', { path: '/' });
+        cookies().set('admin_user', JSON.stringify(adminUser), { path: '/' });
         await logAdminAction('Admin Logged In');
         redirect('/dashboard');
     }
@@ -251,12 +249,12 @@ export async function authenticate(prevState: any, formData: FormData) {
 
 
 export async function logout() {
-  const adminCookie = await cookies().get('admin_user');
+  const adminCookie = cookies().get('admin_user');
   if (adminCookie) {
     await logAdminAction('Admin Logged Out');
   }
-  await cookies().delete('auth');
-  await cookies().delete('admin_user');
+  cookies().delete('auth');
+  cookies().delete('admin_user');
   redirect('/login');
 }
 
@@ -364,7 +362,7 @@ export async function addAdmin(data: unknown) {
 
 export async function deleteAdmin(adminId: string) {
     try {
-        const adminCookie = await cookies().get('admin_user');
+        const adminCookie = cookies().get('admin_user');
         if (!adminCookie) return { error: 'Authentication required.' };
         
         const currentUser = JSON.parse(adminCookie.value);
@@ -467,5 +465,7 @@ export async function deleteExam(examId: string) {
         return { error: 'Failed to delete exam.' };
     }
 }
+
+    
 
     
