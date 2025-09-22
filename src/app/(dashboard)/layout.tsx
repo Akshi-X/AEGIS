@@ -19,12 +19,13 @@ import { logout } from '@/lib/actions';
 import { cookies } from 'next/headers';
 
 
-export default function DashboardLayout({
+export default async function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const userCookie = cookies().get('admin_user');
+  const cookieStore = cookies();
+  const userCookie = cookieStore.get('admin_user');
   const user = userCookie ? JSON.parse(userCookie.value) : { username: 'Admin', role: 'admin' };
 
   return (
