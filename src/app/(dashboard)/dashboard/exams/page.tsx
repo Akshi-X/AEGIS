@@ -1,10 +1,10 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getExams, scheduleExam } from '@/lib/actions';
+import { useEffect, useState, useTransition } from 'react';
+import { getExams, scheduleExam, startExamNow, deleteExam } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Calendar as CalendarIcon, Clock } from 'lucide-react';
+import { PlusCircle, Calendar as CalendarIcon, Clock, MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
@@ -19,12 +19,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import type { Exam } from '@/lib/types';
 import type { WithId } from 'mongodb';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 
 export default function ExamsPage() {
   const [exams, setExams] = useState<WithId<Exam>[]>([]);
   const [open, setOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -85,6 +88,30 @@ export default function ExamsPage() {
         toast({ title: 'Error', description: result.error || 'Failed to schedule exam.', variant: 'destructive' });
     }
     setIsSubmitting(false);
+  }
+
+  const handleStartNow = (examId: string) => {
+    startTransition(async () => {
+        const result = await startExamNow(examId);
+        if (result.success) {
+            toast({ title: 'Success', description: 'Exam has been started.' });
+            fetchExams();
+        } else {
+            toast({ title: 'Error', description: result.error || 'Failed to start exam.', variant: 'destructive' });
+        }
+    });
+  }
+
+  const handleDelete = (examId: string) => {
+    startTransition(async () => {
+        const result = await deleteExam(examId);
+        if (result.success) {
+            toast({ title: 'Success', description: 'Exam has been deleted.' });
+            fetchExams();
+        } else {
+            toast({ title: 'Error', description: result.error || 'Failed to delete exam.', variant: 'destructive' });
+        }
+    });
   }
 
   return (
@@ -174,7 +201,10 @@ export default function ExamsPage() {
                 <Card key={exam._id as string}>
                     <CardHeader>
                         <div className="flex justify-between items-start">
-                           <CardTitle>{exam.title}</CardTitle>
+                           <div>
+                                <CardTitle>{exam.title}</CardTitle>
+                                <CardDescription>{exam.description}</CardDescription>
+                           </div>
                            <Badge variant={
                                exam.status === 'Scheduled' ? 'secondary' :
                                exam.status === 'In Progress' ? 'default' : 'outline'
@@ -184,7 +214,6 @@ export default function ExamsPage() {
                             )}
                            >{exam.status}</Badge>
                         </div>
-                        <CardDescription>{exam.description}</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-2 text-sm">
                         <div className="flex items-center gap-2">
@@ -196,9 +225,45 @@ export default function ExamsPage() {
                            <span>{exam.duration} minutes</span>
                         </div>
                     </CardContent>
+                    <div className="flex items-center p-6 pt-2">
+                         <AlertDialog>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" className="h-8 w-8 p-0 ml-auto" disabled={isPending}>
+                                        <span className="sr-only">Open menu</span>
+                                        <MoreHorizontal className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                     {exam.status === 'Scheduled' && (
+                                        <DropdownMenuItem onClick={() => handleStartNow(exam._id.toString())}>Start Now</DropdownMenuItem>
+                                     )}
+                                    <AlertDialogTrigger asChild>
+                                        <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+                                    </AlertDialogTrigger>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                    <AlertDialogDescription>
+                                        This action cannot be undone. This will permanently delete the exam titled "<span className="font-bold">{exam.title}</span>".
+                                    </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => handleDelete(exam._id.toString())} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                        Delete
+                                    </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                    </div>
                 </Card>
             ))}
         </div>
     </div>
   );
 }
+
+    

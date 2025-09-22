@@ -227,27 +227,13 @@ export async function getAdminLogs(): Promise<WithId<AdminLog>[]> {
 }
 
 // Authentication Actions
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
 export async function authenticate(prevState: any, formData: FormData) {
     const username = formData.get('username') as string;
     const password = formData.get('password') as string;
 
     const adminsCollection = await getAdminsCollection();
-    const adminCount = await adminsCollection.countDocuments();
-
-    // Special case: If no admins exist, create the first one from .env password
-    if (adminCount === 0 && username === 'admin' && password === ADMIN_PASSWORD) {
-        const newAdmin: Omit<Admin, '_id'> = { username: 'admin', password: password, role: 'superadmin' };
-        await adminsCollection.insertOne(newAdmin);
-        
-        const adminUser = { username: newAdmin.username, role: newAdmin.role };
-        await cookies().set('auth', 'true', { httpOnly: true, path: '/' });
-        await cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
-        await logAdminAction('Initial Admin Created');
-        redirect('/dashboard');
-    }
-
+    
     const admin = await adminsCollection.findOne({ username });
 
     if (admin && admin.password === password) {
@@ -395,10 +381,6 @@ export async function deleteAdmin(adminId: string) {
         if (adminToDelete.username === currentUser.username) {
             return { error: 'You cannot delete your own account.' };
         }
-        
-        if (currentUser.role !== 'superadmin') {
-            return { error: 'You do not have permission to delete admins.' };
-        }
 
         await adminsCollection.deleteOne({ _id: adminToDeleteId });
         await logAdminAction(`Admin Deleted`, { deletedAdminUsername: adminToDelete.username });
@@ -422,7 +404,7 @@ export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'question
 
     if (!validatedFields.success) {
         return {
-            error: validatedFields.error.flatten().fieldErrors,
+            error: 'One or more fields are invalid.',
         }
     }
 
@@ -443,3 +425,47 @@ export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'question
         return { error: 'Failed to schedule exam.' };
     }
 }
+
+
+export async function startExamNow(examId: string) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+
+        if (!exam) return { error: 'Exam not found.' };
+
+        await examsCollection.updateOne(
+            { _id: new ObjectId(examId) },
+            { $set: { status: 'In Progress', startTime: new Date() } }
+        );
+
+        await logAdminAction('Started Exam Manually', { examTitle: exam.title });
+        revalidatePath('/dashboard/exams');
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error) {
+        console.error('Error starting exam:', error);
+        return { error: 'Failed to start exam.' };
+    }
+}
+
+export async function deleteExam(examId: string) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+
+        if (!exam) return { error: 'Exam not found.' };
+
+        await examsCollection.deleteOne({ _id: new ObjectId(examId) });
+        await logAdminAction('Deleted Exam', { examTitle: exam.title });
+
+        revalidatePath('/dashboard/exams');
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting exam:', error);
+        return { error: 'Failed to delete exam.' };
+    }
+}
+
+    
