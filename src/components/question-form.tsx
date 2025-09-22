@@ -1,7 +1,8 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useFormState, useFormStatus } from 'react-dom';
+import { useActionState, useFormStatus } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -46,7 +47,7 @@ function SubmitButton() {
 }
 
 export function QuestionForm() {
-  const [formState, formAction] = useFormState(getAiSuggestions, initialState);
+  const [formState, formAction] = useActionState(getAiSuggestions, initialState);
   const { toast } = useToast();
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
