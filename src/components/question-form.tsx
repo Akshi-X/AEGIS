@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useActionState, useTransition } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -52,7 +52,7 @@ export function QuestionForm() {
     },
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control: form.control,
     name: "options",
   });
@@ -92,15 +92,16 @@ export function QuestionForm() {
       const result = await getAiFullQuestionSuggestion({ topic: suggestionTopic });
       if (result.suggestion) {
         const { questionText, options, correctOptions, difficulty } = result.suggestion;
-        form.reset({
-          questionText,
-          options,
-          correctOptions,
-          category: difficulty,
-          tags: [suggestionTopic],
-          weight: 1,
-          negativeMarking: false,
-        });
+        
+        // Use setValue for more reliable state updates with react-hook-form
+        form.setValue('questionText', questionText);
+        replace(options); // replace the entire options array
+        form.setValue('correctOptions', correctOptions);
+        form.setValue('category', difficulty);
+        form.setValue('tags', [suggestionTopic]);
+        form.setValue('weight', 1);
+        form.setValue('negativeMarking', false);
+
         setTags([suggestionTopic]);
         toast({ title: 'AI Question Generated', description: 'The form has been populated with the suggested question.' });
       } else {
