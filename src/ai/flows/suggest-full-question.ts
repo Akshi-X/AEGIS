@@ -38,6 +38,8 @@ const prompt = ai.definePrompt({
   
   Topic: {{{topic}}}
 
+  IMPORTANT: Ensure the position of the correct answer within the 'options' array is randomized and not always in the same place.
+
   Your response must be a JSON object containing:
   - "questionText": The question itself.
   - "options": An array of objects, where each object has a "text" key with the option string (e.g., [{ "text": "Option A" }, ...]).
