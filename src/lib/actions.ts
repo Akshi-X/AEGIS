@@ -44,7 +44,7 @@ type FullQuestionSuggestionState = {
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
         const adminLogsCollection = await getAdminLogsCollection();
-        const adminCookie = cookies().get('admin_user');
+        const adminCookie = await cookies().get('admin_user');
         const admin = adminCookie ? JSON.parse(adminCookie.value) : { username: 'System' };
         
         await adminLogsCollection.insertOne({
@@ -125,10 +125,16 @@ export async function saveQuestion(data: unknown) {
         }
     }
 
+    const { questionText, ...rest } = validatedFields.data;
+
     try {
         const questionsCollection = await getQuestionsCollection();
-        await questionsCollection.insertOne(validatedFields.data);
-        await logAdminAction('Created Question', { questionText: validatedFields.data.questionText });
+        const questionData = {
+            text: questionText,
+            ...rest
+        };
+        await questionsCollection.insertOne(questionData);
+        await logAdminAction('Created Question', { questionText: questionData.text });
         revalidatePath('/dashboard/questions');
         revalidatePath('/dashboard');
     } catch(e) {
@@ -284,7 +290,7 @@ export async function authenticate(prevState: any, formData: FormData) {
 
 
 export async function logout() {
-  const adminCookie = cookies().get('admin_user');
+  const adminCookie = await cookies().get('admin_user');
   if (adminCookie) {
     await logAdminAction('Admin Logged Out');
   }
@@ -397,7 +403,7 @@ export async function addAdmin(data: unknown) {
 
 export async function deleteAdmin(adminId: string) {
     try {
-        const adminCookie = cookies().get('admin_user');
+        const adminCookie = await cookies().get('admin_user');
         if (!adminCookie) return { error: 'Authentication required.' };
         
         const currentUser = JSON.parse(adminCookie.value);
