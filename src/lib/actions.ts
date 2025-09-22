@@ -371,28 +371,46 @@ export async function registerPc(prevState: any, formData: FormData) {
     const pcName = formData.get('pcName') as string;
     
     if (!pcName || pcName.trim().length < 3) {
-        return { message: "PC name must be at least 3 characters.", status: "error" };
+        return { message: "PC name must be at least 3 characters.", status: "error", pcIdentifier: null };
     }
 
     try {
         const pcsCollection = await getPcsCollection();
+        const uniqueIdentifier = `pc-id-${generateRandomString(8)}`;
         
         const newPc: Omit<PC, '_id'> = {
             name: pcName,
             ipAddress: 'N/A',
             status: 'Pending',
-            uniqueIdentifier: `pc-id-${generateRandomString(8)}`
+            uniqueIdentifier: uniqueIdentifier
         };
 
         await pcsCollection.insertOne(newPc);
         revalidatePath('/dashboard/pcs');
 
-        return { message: "Your PC registration request has been submitted.", status: "success" };
+        return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
     } catch (error) {
         console.error('PC Registration Error:', error);
-        return { message: "An error occurred while registering your PC. Please try again.", status: "error" };
+        return { message: "An error occurred while registering your PC. Please try again.", status: "error", pcIdentifier: null };
     }
 }
+
+
+export async function getPcStatus(identifier: string) {
+    try {
+        const pcsCollection = await getPcsCollection();
+        const pc = await pcsCollection.findOne({ uniqueIdentifier: identifier });
+
+        if (pc) {
+            return { status: pc.status };
+        }
+        return { status: null };
+    } catch (error) {
+        console.error('Error fetching PC status:', error);
+        return { status: null };
+    }
+}
+
 
 export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejected') {
   try {
