@@ -1,4 +1,5 @@
-import { mockExams } from '@/lib/data';
+
+import { getExams } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,7 +14,9 @@ import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-export default function ExamsPage() {
+export default async function ExamsPage() {
+  const exams = await getExams();
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex items-center justify-between">
@@ -90,8 +93,8 @@ export default function ExamsPage() {
             </Dialog>
         </div>
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {mockExams.map((exam) => (
-                <Card key={exam.id}>
+            {exams.map((exam) => (
+                <Card key={exam._id as string}>
                     <CardHeader>
                         <div className="flex justify-between items-start">
                            <CardTitle>{exam.title}</CardTitle>

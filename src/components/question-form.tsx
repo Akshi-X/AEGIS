@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Wand2, X } from 'lucide-react';
 
-import { getAiSuggestions } from '@/lib/actions';
+import { getAiSuggestions, saveQuestion } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,7 +39,7 @@ const initialState = {
 function SubmitButton() {
   const { pending } = useFormStatus();
   return (
-    <Button type="button" form="ai-form" disabled={pending}>
+    <Button type="submit" form="ai-form" disabled={pending}>
       {pending ? 'Thinking...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest with AI</>}
     </Button>
   );
@@ -95,12 +95,20 @@ export function QuestionForm() {
     form.setValue('tags', newTags);
   };
   
-  function onSubmit(data: QuestionFormValues) {
-    console.log(data);
-    toast({
-      title: "Question Submitted",
-      description: "The new question has been saved.",
-    })
+  async function onSubmit(data: QuestionFormValues) {
+    const result = await saveQuestion(data);
+    if(result?.error) {
+       toast({
+        title: "Error Saving Question",
+        description: result.error,
+        variant: 'destructive',
+      })
+    } else {
+       toast({
+        title: "Question Submitted",
+        description: "The new question has been saved.",
+      })
+    }
   }
 
   return (
@@ -282,7 +290,9 @@ export function QuestionForm() {
         </div>
 
         <div className="flex justify-end">
-            <Button type="submit" size="lg">Save Question</Button>
+            <Button type="submit" size="lg" disabled={form.formState.isSubmitting}>
+                {form.formState.isSubmitting ? 'Saving...' : 'Save Question'}
+            </Button>
         </div>
       </form>
     </Form>

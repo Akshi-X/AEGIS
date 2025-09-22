@@ -1,4 +1,5 @@
-import { mockStudents } from '@/lib/data';
+'use client';
+import { getStudents, addStudent } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -16,11 +17,56 @@ import {
 import { Button } from '@/components/ui/button';
 import { MoreHorizontal, PlusCircle, Upload } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { useToast } from '@/hooks/use-toast';
+import { useEffect, useState } from 'react';
+import type { Student } from '@/lib/types';
+import type { WithId } from 'mongodb';
+
+
+const studentSchema = z.object({
+  name: z.string().min(1, "Name is required."),
+  rollNumber: z.string().min(1, "Roll number is required."),
+  classBatch: z.string().min(1, "Class/Batch is required."),
+});
 
 export default function StudentsPage() {
+    const [students, setStudents] = useState<WithId<Student>[]>([]);
+    const [open, setOpen] = useState(false);
+    const { toast } = useToast();
+
+    useEffect(() => {
+        getStudents().then(setStudents);
+    }, []);
+
+  const form = useForm({
+    resolver: zodResolver(studentSchema),
+    defaultValues: {
+      name: '',
+      rollNumber: '',
+      classBatch: '',
+    },
+  });
+
+  const onSubmit = async (data: z.infer<typeof studentSchema>) => {
+    const result = await addStudent(data);
+    if (result?.success) {
+      toast({ title: "Student Added", description: "The new student has been saved." });
+      setOpen(false);
+      form.reset();
+      getStudents().then(setStudents);
+    } else {
+      toast({ title: "Error", description: result?.error || "An unknown error occurred.", variant: "destructive" });
+    }
+  };
+
+
   return (
     <Card>
       <CardHeader>
@@ -49,7 +95,7 @@ export default function StudentsPage() {
                         <Button type="submit">Upload and Validate</Button>
                     </DialogContent>
                 </Dialog>
-                <Dialog>
+                <Dialog open={open} onOpenChange={setOpen}>
                     <DialogTrigger asChild>
                         <Button><PlusCircle className="mr-2 h-4 w-4" /> Add Student</Button>
                     </DialogTrigger>
@@ -57,21 +103,54 @@ export default function StudentsPage() {
                         <DialogHeader>
                             <DialogTitle>Add New Student</DialogTitle>
                         </DialogHeader>
-                        <div className="grid gap-4 py-4">
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="name" className="text-right">Name</Label>
-                                <Input id="name" className="col-span-3" />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="rollNumber" className="text-right">Roll Number</Label>
-                                <Input id="rollNumber" className="col-span-3" />
-                            </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="classBatch" className="text-right">Class/Batch</Label>
-                                <Input id="classBatch" className="col-span-3" />
-                            </div>
-                        </div>
-                        <Button type="submit">Save Student</Button>
+                        <Form {...form}>
+                            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                                <FormField
+                                control={form.control}
+                                name="name"
+                                render={({ field }) => (
+                                    <FormItem>
+                                    <FormLabel>Name</FormLabel>
+                                    <FormControl>
+                                        <Input {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <FormField
+                                control={form.control}
+                                name="rollNumber"
+                                render={({ field }) => (
+                                    <FormItem>
+                                    <FormLabel>Roll Number</FormLabel>
+                                    <FormControl>
+                                        <Input {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <FormField
+                                control={form.control}
+                                name="classBatch"
+                                render={({ field }) => (
+                                    <FormItem>
+                                    <FormLabel>Class/Batch</FormLabel>
+                                    <FormControl>
+                                        <Input {...field} />
+                                    </FormControl>
+                                    <FormMessage />
+                                    </FormItem>
+                                )}
+                                />
+                                <DialogFooter>
+                                    <Button type="submit" disabled={form.formState.isSubmitting}>
+                                        {form.formState.isSubmitting ? 'Saving...' : 'Save Student'}
+                                    </Button>
+                                </DialogFooter>
+                            </form>
+                        </Form>
                     </DialogContent>
                 </Dialog>
             </div>
@@ -88,8 +167,8 @@ export default function StudentsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockStudents.map((student) => (
-              <TableRow key={student.id}>
+            {students.map((student) => (
+              <TableRow key={student._id as string}>
                 <TableCell className="font-medium">{student.name}</TableCell>
                 <TableCell>{student.rollNumber}</TableCell>
                 <TableCell>{student.classBatch}</TableCell>

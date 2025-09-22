@@ -1,11 +1,14 @@
+
 import Link from 'next/link';
-import { mockQuestions } from '@/lib/data';
+import { getQuestions } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { PlusCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-export default function QuestionsPage() {
+export default async function QuestionsPage() {
+  const questions = await getQuestions();
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex items-center justify-between">
@@ -20,8 +23,8 @@ export default function QuestionsPage() {
             </Link>
         </div>
         <div className="grid gap-4">
-            {mockQuestions.map((q) => (
-                <Card key={q.id}>
+            {questions.map((q) => (
+                <Card key={q._id as string}>
                     <CardHeader>
                         <div className="flex justify-between items-start">
                            <CardTitle className="text-base font-medium leading-relaxed pr-8">{q.text.replace(/\$/g, '')}</CardTitle>

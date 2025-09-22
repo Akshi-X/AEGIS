@@ -1,4 +1,5 @@
-import { mockPcs } from '@/lib/data';
+
+import { getPcs } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -19,7 +20,9 @@ import { MoreHorizontal } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-export default function PCsPage() {
+export default async function PCsPage() {
+  const pcs = await getPcs();
+
   return (
     <Card>
       <CardHeader>
@@ -40,8 +43,8 @@ export default function PCsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {mockPcs.map((pc) => (
-              <TableRow key={pc.id}>
+            {pcs.map((pc) => (
+              <TableRow key={pc._id as string}>
                 <TableCell className="font-medium">{pc.name}</TableCell>
                 <TableCell>{pc.ipAddress}</TableCell>
                 <TableCell>

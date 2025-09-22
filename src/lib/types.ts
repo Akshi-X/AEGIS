@@ -1,12 +1,14 @@
+import type { ObjectId } from 'mongodb';
+
 export type Student = {
-  id: string;
+  _id?: string | ObjectId;
   name: string;
   rollNumber: string;
   classBatch: string;
 };
 
 export type PC = {
-  id:string;
+  _id?: string | ObjectId;
   name: string;
   ipAddress: string;
   status: 'Pending' | 'Approved' | 'Rejected';
@@ -14,7 +16,7 @@ export type PC = {
 };
 
 export type Question = {
-  id: string;
+  _id?: string | ObjectId;
   text: string;
   options: { text: string }[];
   correctOptions: number[];
@@ -25,7 +27,7 @@ export type Question = {
 };
 
 export type Exam = {
-  id: string;
+  _id?: string | ObjectId;
   title: string;
   description: string;
   startTime: Date;

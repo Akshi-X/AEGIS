@@ -1,4 +1,3 @@
-'use client';
 
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
@@ -9,17 +8,10 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
-import { mockExams, mockPcs, mockQuestions, mockStudents } from '@/lib/data';
-import { Monitor, Users, FileQuestion, ClipboardList, Clock } from 'lucide-react';
+import { getExams, getPcs, getQuestions, getStudents } from '@/lib/actions';
+import { Monitor, Users, FileQuestion, ClipboardList } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
-
-const questionDifficultyData = [
-  { level: 'Easy', count: mockQuestions.filter(q => q.category === 'Easy').length, fill: 'hsl(var(--chart-2))' },
-  { level: 'Medium', count: mockQuestions.filter(q => q.category === 'Medium').length, fill: 'hsl(var(--chart-4))' },
-  { level: 'Hard', count: mockQuestions.filter(q => q.category === 'Hard').length, fill: 'hsl(var(--chart-1))' },
-];
 
 const chartConfig = {
   count: {
@@ -39,9 +31,20 @@ const chartConfig = {
   },
 } satisfies ChartConfig
 
-export default function DashboardPage() {
-  const activePcs = mockPcs.filter(pc => pc.status === 'Approved').length;
-  const upcomingExams = mockExams.filter(exam => exam.status === 'Scheduled');
+export default async function DashboardPage() {
+  const students = await getStudents();
+  const questions = await getQuestions();
+  const pcs = await getPcs();
+  const exams = await getExams();
+
+  const activePcs = pcs.filter(pc => pc.status === 'Approved').length;
+  const upcomingExams = exams.filter(exam => exam.status === 'Scheduled');
+
+  const questionDifficultyData = [
+    { level: 'Easy', count: questions.filter(q => q.category === 'Easy').length, fill: 'hsl(var(--chart-2))' },
+    { level: 'Medium', count: questions.filter(q => q.category === 'Medium').length, fill: 'hsl(var(--chart-4))' },
+    { level: 'Hard', count: questions.filter(q => q.category === 'Hard').length, fill: 'hsl(var(--chart-1))' },
+  ];
 
   return (
     <div className="flex flex-col gap-6">
@@ -52,7 +55,7 @@ export default function DashboardPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockStudents.length}</div>
+            <div className="text-2xl font-bold">{students.length}</div>
             <p className="text-xs text-muted-foreground">+2 since last week</p>
           </CardContent>
         </Card>
@@ -62,7 +65,7 @@ export default function DashboardPage() {
             <FileQuestion className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{mockQuestions.length}</div>
+            <div className="text-2xl font-bold">{questions.length}</div>
             <p className="text-xs text-muted-foreground">+10 since last month</p>
           </CardContent>
         </Card>
@@ -73,7 +76,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{activePcs}</div>
-            <p className="text-xs text-muted-foreground">out of {mockPcs.length} total PCs</p>
+            <p className="text-xs text-muted-foreground">out of {pcs.length} total PCs</p>
           </CardContent>
         </Card>
         <Card>
@@ -105,7 +108,7 @@ export default function DashboardPage() {
                 </TableHeader>
                 <TableBody>
                     {upcomingExams.slice(0, 5).map(exam => (
-                        <TableRow key={exam.id}>
+                        <TableRow key={exam._id as string}>
                             <TableCell className="font-medium">{exam.title}</TableCell>
                             <TableCell>{format(exam.startTime, 'MMM d, yyyy, h:mm a')}</TableCell>
                             <TableCell>{exam.duration} mins</TableCell>
