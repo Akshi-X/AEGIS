@@ -121,7 +121,7 @@ export default function SettingsPage() {
                                                 </AlertDialog>
                                             ) : (
                                                  <span className="text-xs text-muted-foreground">
-                                                    {currentUser?.role === 'superadmin' ? 'Cannot delete self' : '-'}
+                                                    {admin.username === currentUser?.username ? 'Cannot delete self' : '-'}
                                                  </span>
                                             )}
                                         </TableCell>
