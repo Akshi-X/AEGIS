@@ -1,5 +1,8 @@
 
-import { getExams } from '@/lib/actions';
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getExams, scheduleExam } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { PlusCircle, Calendar as CalendarIcon, Clock } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,9 +16,76 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
+import type { Exam } from '@/lib/types';
+import type { WithId } from 'mongodb';
 
-export default async function ExamsPage() {
-  const exams = await getExams();
+
+export default function ExamsPage() {
+  const [exams, setExams] = useState<WithId<Exam>[]>([]);
+  const [open, setOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [time, setTime] = useState(format(new Date(), 'HH:mm'));
+  const [duration, setDuration] = useState('');
+  const [questionMode, setQuestionMode] = useState('');
+  
+  const { toast } = useToast();
+
+  const fetchExams = async () => {
+    const examsData = await getExams();
+    setExams(examsData);
+  }
+
+  useEffect(() => {
+    fetchExams();
+  }, []);
+
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setDate(new Date());
+    setTime(format(new Date(), 'HH:mm'));
+    setDuration('');
+    setQuestionMode('');
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    if (!date) {
+        toast({ title: "Error", description: "Please select a start date.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
+    }
+    
+    const [hours, minutes] = time.split(':').map(Number);
+    const startTime = new Date(date);
+    startTime.setHours(hours, minutes);
+
+    const examData = {
+        title,
+        description,
+        startTime,
+        duration: Number(duration),
+    };
+
+    const result = await scheduleExam(examData);
+
+    if (result.success) {
+        toast({ title: 'Success', description: 'Exam scheduled successfully.' });
+        fetchExams();
+        setOpen(false);
+        resetForm();
+    } else {
+        toast({ title: 'Error', description: result.error || 'Failed to schedule exam.', variant: 'destructive' });
+    }
+    setIsSubmitting(false);
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -26,69 +96,76 @@ export default async function ExamsPage() {
                     Schedule, configure, and monitor all exams.
                 </p>
             </div>
-            <Dialog>
+            <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
                     <Button><PlusCircle className="mr-2 h-4 w-4" /> Schedule Exam</Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[625px]">
-                    <DialogHeader>
-                        <DialogTitle>Schedule New Exam</DialogTitle>
-                        <DialogDescription>
-                            Configure the details for the new exam.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="title" className="text-right">Title</Label>
-                            <Input id="title" className="col-span-3" />
+                    <form onSubmit={handleSubmit}>
+                        <DialogHeader>
+                            <DialogTitle>Schedule New Exam</DialogTitle>
+                            <DialogDescription>
+                                Configure the details for the new exam.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="title" className="text-right">Title</Label>
+                                <Input id="title" value={title} onChange={(e) => setTitle(e.target.value)} className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="description" className="text-right">Description</Label>
+                                <Textarea id="description" value={description} onChange={(e) => setDescription(e.target.value)} className="col-span-3" required/>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="startTime" className="text-right">Start Time</Label>
+                                <Popover>
+                                    <PopoverTrigger asChild>
+                                    <Button
+                                        variant={"outline"}
+                                        className={cn(
+                                        "col-span-3 justify-start text-left font-normal",
+                                        !date && "text-muted-foreground"
+                                        )}
+                                    >
+                                        <CalendarIcon className="mr-2 h-4 w-4" />
+                                        {date ? format(date, "PPP") : <span>Pick a date</span>}
+                                    </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-auto p-0">
+                                        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+                                    </PopoverContent>
+                                </Popover>
+                            </div>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="startTime" className="text-right sr-only">Start Time</Label>
+                                <div className="col-start-2 col-span-3">
+                                  <Input type="time" value={time} onChange={e => setTime(e.target.value)} required />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="duration" className="text-right">Duration (mins)</Label>
+                                <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(e.target.value)} className="col-span-3" required />
+                            </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="questions" className="text-right">Questions</Label>
+                                <Select value={questionMode} onValueChange={setQuestionMode}>
+                                    <SelectTrigger className="col-span-3">
+                                    <SelectValue placeholder="Select question mode" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                    <SelectItem value="auto">Auto-select (e.g. 10 Easy, 5 Medium)</SelectItem>
+                                    <SelectItem value="manual" disabled>Manual selection (coming soon)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="description" className="text-right">Description</Label>
-                            <Textarea id="description" className="col-span-3" />
-                        </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="startTime" className="text-right">Start Time</Label>
-                             <Popover>
-                                <PopoverTrigger asChild>
-                                <Button
-                                    variant={"outline"}
-                                    className={cn(
-                                    "w-[280px] justify-start text-left font-normal",
-                                    !Date && "text-muted-foreground"
-                                    )}
-                                >
-                                    <CalendarIcon className="mr-2 h-4 w-4" />
-                                    {format(new Date(), "PPP HH:mm")}
-                                </Button>
-                                </PopoverTrigger>
-                                <PopoverContent className="w-auto p-0">
-                                    <Calendar mode="single" />
-                                    <div className="p-2 border-t border-border">
-                                        <Input type="time" />
-                                    </div>
-                                </PopoverContent>
-                            </Popover>
-                        </div>
-                         <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="duration" className="text-right">Duration (mins)</Label>
-                            <Input id="duration" type="number" className="col-span-3" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="questions" className="text-right">Questions</Label>
-                            <Select>
-                                <SelectTrigger className="col-span-3">
-                                <SelectValue placeholder="Select question mode" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                <SelectItem value="auto">Auto-select (e.g. 10 Easy, 5 Medium)</SelectItem>
-                                <SelectItem value="manual">Manual selection</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button type="submit">Schedule Exam</Button>
-                    </DialogFooter>
+                        <DialogFooter>
+                            <Button type="submit" disabled={isSubmitting}>
+                                {isSubmitting ? 'Scheduling...' : 'Schedule Exam'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
                 </DialogContent>
             </Dialog>
         </div>
@@ -112,7 +189,7 @@ export default async function ExamsPage() {
                     <CardContent className="space-y-2 text-sm">
                         <div className="flex items-center gap-2">
                            <CalendarIcon className="h-4 w-4 text-muted-foreground" />
-                           <span>{format(exam.startTime, 'MMM d, yyyy, h:mm a')}</span>
+                           <span>{format(new Date(exam.startTime), 'MMM d, yyyy, h:mm a')}</span>
                         </div>
                          <div className="flex items-center gap-2">
                            <Clock className="h-4 w-4 text-muted-foreground" />

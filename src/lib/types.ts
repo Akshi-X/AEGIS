@@ -1,3 +1,4 @@
+
 import type { ObjectId } from 'mongodb';
 
 export type Student = {
@@ -33,6 +34,7 @@ export type Exam = {
   startTime: Date;
   duration: number; // in minutes
   status: 'Scheduled' | 'In Progress' | 'Completed';
+  questionIds: (string | ObjectId)[];
 };
 
 export type Admin = {

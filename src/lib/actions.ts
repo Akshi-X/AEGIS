@@ -5,8 +5,8 @@ import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
 import { z } from 'zod';
 import { getAdminsCollection, getAdminLogsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
-import { WithId, Document } from 'mongodb';
-import type { Question, Student, PC, Exam, Admin } from './types';
+import { WithId, Document, ObjectId } from 'mongodb';
+import type { Question, Student, PC, Exam, Admin, AdminLog } from './types';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
@@ -34,7 +34,7 @@ type FormState = {
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
         const adminLogsCollection = await getAdminLogsCollection();
-        const adminCookie = cookies().get('admin_user');
+        const adminCookie = await cookies().get('admin_user');
         const admin = adminCookie ? JSON.parse(adminCookie.value) : { username: 'System' };
         
         await adminLogsCollection.insertOne({
@@ -216,10 +216,10 @@ export async function getAdmins(): Promise<WithId<Admin>[]> {
   }
 }
 
-export async function getAdminLogs() {
+export async function getAdminLogs(): Promise<WithId<AdminLog>[]> {
   try {
-    const logs = await fetchAndMapDocuments<any>('admin_logs');
-    return logs;
+    const logs = await fetchAndMapDocuments<AdminLog>('admin_logs');
+    return logs.map(log => ({...log, timestamp: new Date(log.timestamp)}));
   } catch (error) {
     console.error('Error fetching admin logs:', error);
     return [];
@@ -315,7 +315,6 @@ export async function registerPc(prevState: any, formData: FormData) {
 export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejected') {
   try {
     const pcsCollection = await getPcsCollection();
-    const { ObjectId } = await import('mongodb');
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
 
     await pcsCollection.updateOne({ _id: new ObjectId(pcId) }, { $set: { status } });
@@ -331,7 +330,6 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
 export async function deletePc(pcId: string) {
     try {
         const pcsCollection = await getPcsCollection();
-        const { ObjectId } = await import('mongodb');
         const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
 
         await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
@@ -385,7 +383,6 @@ export async function deleteAdmin(adminId: string) {
         
         const currentUser = JSON.parse(adminCookie.value);
 
-        const { ObjectId } = await import('mongodb');
         const adminToDeleteId = new ObjectId(adminId);
 
         const adminsCollection = await getAdminsCollection();
@@ -398,6 +395,10 @@ export async function deleteAdmin(adminId: string) {
         if (adminToDelete.username === currentUser.username) {
             return { error: 'You cannot delete your own account.' };
         }
+        
+        if (currentUser.role !== 'superadmin') {
+            return { error: 'You do not have permission to delete admins.' };
+        }
 
         await adminsCollection.deleteOne({ _id: adminToDeleteId });
         await logAdminAction(`Admin Deleted`, { deletedAdminUsername: adminToDelete.username });
@@ -406,5 +407,39 @@ export async function deleteAdmin(adminId: string) {
     } catch (error) {
         console.error('Error deleting admin:', error);
         return { error: 'Failed to delete admin.' };
+    }
+}
+
+export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'questionIds'>) {
+    const examSchema = z.object({
+        title: z.string().min(1, "Title is required"),
+        description: z.string().min(1, "Description is required"),
+        startTime: z.date(),
+        duration: z.number().min(1, "Duration must be positive"),
+    });
+
+    const validatedFields = examSchema.safeParse(data);
+
+    if (!validatedFields.success) {
+        return {
+            error: validatedFields.error.flatten().fieldErrors,
+        }
+    }
+
+    try {
+        const examsCollection = await getExamsCollection();
+        const newExam: Omit<Exam, '_id'> = {
+            ...validatedFields.data,
+            status: 'Scheduled',
+            questionIds: [],
+        }
+        await examsCollection.insertOne(newExam);
+        await logAdminAction('Scheduled Exam', { examTitle: validatedFields.data.title });
+        revalidatePath('/dashboard/exams');
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error) {
+        console.error('Error scheduling exam:', error);
+        return { error: 'Failed to schedule exam.' };
     }
 }
