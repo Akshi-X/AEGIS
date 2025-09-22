@@ -244,7 +244,7 @@ export async function getPcs(): Promise<WithId<PC>[]> {
                             } 
                         } 
                     },
-                    { $project: { name: 1, _id: 0 } }
+                    { $project: { name: 1, rollNumber: 1, _id: 0 } }
                 ],
                 as: 'assignedStudent'
             }
@@ -257,7 +257,8 @@ export async function getPcs(): Promise<WithId<PC>[]> {
         },
         {
             $addFields: {
-                assignedStudentName: '$assignedStudent.name'
+                assignedStudentName: '$assignedStudent.name',
+                assignedStudentRollNumber: '$assignedStudent.rollNumber'
             }
         },
         {

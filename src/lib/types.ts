@@ -16,6 +16,7 @@ export type PC = {
   uniqueIdentifier: string;
   assignedStudentId?: string | ObjectId;
   assignedStudentName?: string;
+  assignedStudentRollNumber?: string;
 };
 
 export type Question = {

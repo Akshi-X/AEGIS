@@ -124,10 +124,14 @@ export default function PCsPage() {
                     {pc.assignedStudentName ? (
                         <div className="flex items-center gap-2">
                            <User className="h-4 w-4 text-muted-foreground" />
-                           <span>{pc.assignedStudentName}</span>
+                           <span>{pc.assignedStudentName} ({pc.assignedStudentRollNumber})</span>
                         </div>
                     ) : (
-                        <span className="text-muted-foreground">Unassigned</span>
+                         pc.status === 'Approved' ? (
+                            <span className="text-muted-foreground italic">Approved (Awaiting Assignment)</span>
+                        ) : (
+                            <span className="text-muted-foreground">Unassigned</span>
+                        )
                     )}
                 </TableCell>
                 <TableCell>{pc.ipAddress}</TableCell>
