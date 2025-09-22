@@ -1,17 +1,12 @@
 
-'use client';
 
 import { getAdmins, deleteAdmin } from '@/lib/actions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { AddAdminForm } from '@/components/add-admin-form';
 import { Badge } from '@/components/ui/badge';
-import { useEffect, useState, useTransition } from 'react';
-import type { Admin } from '@/lib/types';
-import type { WithId } from 'mongodb';
-import Cookies from 'js-cookie';
+import { cookies } from 'next/headers';
 import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,41 +20,19 @@ import {
 } from "@/components/ui/alert-dialog"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { MoreHorizontal } from 'lucide-react';
+import { revalidatePath } from 'next/cache';
+import { AdminDeleteButton } from '@/components/admin-delete-button';
 
 
-export default function SettingsPage() {
-    const [admins, setAdmins] = useState<WithId<Admin>[]>([]);
-    const [currentUser, setCurrentUser] = useState<Admin | null>(null);
-    const [isPending, startTransition] = useTransition();
-    const { toast } = useToast();
+export default async function SettingsPage() {
+    const admins = await getAdmins();
+    const cookieStore = cookies();
+    const userCookie = cookieStore.get('admin_user');
+    const currentUser = userCookie ? JSON.parse(userCookie.value) : null;
 
-    const fetchAdmins = () => {
-        getAdmins().then(setAdmins);
-    };
-
-    useEffect(() => {
-        const userCookie = Cookies.get('admin_user');
-        if (userCookie) {
-            try {
-                setCurrentUser(JSON.parse(userCookie));
-            } catch(e) {
-                console.error("Failed to parse admin_user cookie", e);
-                setCurrentUser(null);
-            }
-        }
-        fetchAdmins();
-    }, []);
-
-    const handleDelete = (adminId: string) => {
-        startTransition(async () => {
-            const result = await deleteAdmin(adminId);
-            if(result?.success) {
-                toast({ title: 'Success', description: 'Admin has been deleted.' });
-                fetchAdmins();
-            } else {
-                toast({ title: 'Error', description: result?.error || 'An error occurred.', variant: 'destructive' });
-            }
-        });
+    const onAdminAdded = async () => {
+        'use server';
+        revalidatePath('/dashboard/settings');
     }
 
     return (
@@ -90,37 +63,7 @@ export default function SettingsPage() {
                                         </TableCell>
                                          <TableCell className="text-right">
                                              {currentUser?.role === 'superadmin' && currentUser?.username !== admin.username ? (
-                                                <AlertDialog>
-                                                    <DropdownMenu>
-                                                        <DropdownMenuTrigger asChild>
-                                                            <Button variant="ghost" className="h-8 w-8 p-0" disabled={isPending}>
-                                                                <span className="sr-only">Open menu</span>
-                                                                <MoreHorizontal className="h-4 w-4" />
-                                                            </Button>
-                                                        </DropdownMenuTrigger>
-                                                        <DropdownMenuContent align="end">
-                                                            <AlertDialogTrigger asChild>
-                                                                <DropdownMenuItem className="text-destructive">
-                                                                    Delete
-                                                                </DropdownMenuItem>
-                                                            </AlertDialogTrigger>
-                                                        </DropdownMenuContent>
-                                                    </DropdownMenu>
-                                                    <AlertDialogContent>
-                                                        <AlertDialogHeader>
-                                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                                            <AlertDialogDescription>
-                                                                This action cannot be undone. This will permanently delete the admin account for <span className="font-bold">{admin.username}</span>.
-                                                            </AlertDialogDescription>
-                                                        </AlertDialogHeader>
-                                                        <AlertDialogFooter>
-                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                                            <AlertDialogAction onClick={() => handleDelete(admin._id as string)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
-                                                                Delete
-                                                            </AlertDialogAction>
-                                                        </AlertDialogFooter>
-                                                    </AlertDialogContent>
-                                                </AlertDialog>
+                                                <AdminDeleteButton adminId={admin._id.toString()} adminUsername={admin.username} />
                                             ) : (
                                                 <div className="h-8 w-8" /> 
                                             )}
@@ -133,7 +76,7 @@ export default function SettingsPage() {
                 </Card>
             </div>
             <div>
-                <AddAdminForm onAdminAdded={fetchAdmins} />
+                <AddAdminForm onAdminAdded={onAdminAdded} />
             </div>
         </div>
     )
