@@ -1,5 +1,5 @@
 
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
 import {
   Card,
   CardContent,
@@ -7,29 +7,11 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { ChartConfig, ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
 import { getExams, getPcs, getQuestions, getStudents } from '@/lib/actions';
 import { Monitor, Users, FileQuestion, ClipboardList } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { format } from 'date-fns';
-
-const chartConfig = {
-  count: {
-    label: "Questions",
-  },
-  easy: {
-    label: "Easy",
-    color: "hsl(var(--chart-2))",
-  },
-  medium: {
-    label: "Medium",
-    color: "hsl(var(--chart-4))",
-  },
-  hard: {
-    label: "Hard",
-    color: "hsl(var(--chart-1))",
-  },
-} satisfies ChartConfig
+import { QuestionDistributionChart } from '@/components/question-distribution-chart';
 
 export default async function DashboardPage() {
   const students = await getStudents();
@@ -110,7 +92,7 @@ export default async function DashboardPage() {
                     {upcomingExams.slice(0, 5).map(exam => (
                         <TableRow key={exam._id as string}>
                             <TableCell className="font-medium">{exam.title}</TableCell>
-                            <TableCell>{format(exam.startTime, 'MMM d, yyyy, h:mm a')}</TableCell>
+                            <TableCell>{format(new Date(exam.startTime), 'MMM d, yyyy, h:mm a')}</TableCell>
                             <TableCell>{exam.duration} mins</TableCell>
                         </TableRow>
                     ))}
@@ -124,17 +106,7 @@ export default async function DashboardPage() {
             <CardDescription>Breakdown of questions by difficulty level.</CardDescription>
           </CardHeader>
           <CardContent>
-             <ChartContainer config={chartConfig} className="min-h-[200px] w-full">
-                <ResponsiveContainer width="100%" height={250}>
-                  <BarChart data={questionDifficultyData} margin={{ top: 20, right: 20, bottom: 5, left: 0 }}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis dataKey="level" tickLine={false} axisLine={false} />
-                    <YAxis tickLine={false} axisLine={false} />
-                    <Tooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </ChartContainer>
+             <QuestionDistributionChart data={questionDifficultyData} />
           </CardContent>
         </Card>
       </div>

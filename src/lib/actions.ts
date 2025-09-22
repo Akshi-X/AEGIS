@@ -2,10 +2,10 @@
 
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
 import { z } from 'zod';
-import { getQuestionsCollection, getStudentsCollection } from './mongodb';
+import { getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
 import { WithId, Document } from 'mongodb';
-import type { Question, Student } from './types';
+import type { Question, Student, PC, Exam } from './types';
 import { redirect } from 'next/navigation';
 
 const questionSchema = z.object({
@@ -142,18 +142,38 @@ async function fetchAndMapDocuments<T extends Document>(collectionName: 'student
 }
 
 export async function getStudents(): Promise<WithId<Student>[]> {
-  return fetchAndMapDocuments<Student>('students');
+  try {
+    return fetchAndMapDocuments<Student>('students');
+  } catch (error) {
+    console.error('Error fetching students:', error);
+    return [];
+  }
 }
 
 export async function getPcs(): Promise<WithId<PC>[]> {
-  return fetchAndMapDocuments<PC>('pcs');
+    try {
+        return fetchAndMapDocuments<PC>('pcs');
+    } catch (error) {
+        console.error('Error fetching PCs:', error);
+        return [];
+    }
 }
 
 export async function getQuestions(): Promise<WithId<Question>[]> {
-  return fetchAndMapDocuments<Question>('questions');
+    try {
+        return fetchAndMapDocuments<Question>('questions');
+    } catch (error) {
+        console.error('Error fetching questions:', error);
+        return [];
+    }
 }
 
 export async function getExams(): Promise<WithId<Exam>[]> {
-  const exams = await fetchAndMapDocuments<Exam>('exams');
-  return exams.map(exam => ({...exam, startTime: new Date(exam.startTime) }));
+    try {
+        const exams = await fetchAndMapDocuments<Exam>('exams');
+        return exams.map(exam => ({...exam, startTime: new Date(exam.startTime) }));
+    } catch (error) {
+        console.error('Error fetching exams:', error);
+        return [];
+    }
 }
