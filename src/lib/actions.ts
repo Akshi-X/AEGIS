@@ -238,12 +238,12 @@ export async function authenticate(prevState: any, formData: FormData) {
 
     // Special case: If no admins exist, create the first one from .env password
     if (adminCount === 0 && username === 'admin' && password === ADMIN_PASSWORD) {
-        const newAdmin: Omit<Admin, '_id'> = { username: 'admin', password: ADMIN_PASSWORD, role: 'superadmin' };
+        const newAdmin: Omit<Admin, '_id'> = { username: 'admin', password: password, role: 'superadmin' };
         await adminsCollection.insertOne(newAdmin);
         
         const adminUser = { username: newAdmin.username, role: newAdmin.role };
-        cookies().set('auth', 'true', { httpOnly: true, path: '/' });
-        cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
+        await cookies().set('auth', 'true', { httpOnly: true, path: '/' });
+        await cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
         await logAdminAction('Initial Admin Created');
         redirect('/dashboard');
     }
@@ -252,8 +252,8 @@ export async function authenticate(prevState: any, formData: FormData) {
 
     if (admin && admin.password === password) {
         const adminUser = { username: admin.username, role: admin.role };
-        cookies().set('auth', 'true', { httpOnly: true, path: '/' });
-        cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
+        await cookies().set('auth', 'true', { httpOnly: true, path: '/' });
+        await cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
         await logAdminAction('Admin Logged In');
         redirect('/dashboard');
     }
@@ -265,12 +265,12 @@ export async function authenticate(prevState: any, formData: FormData) {
 
 
 export async function logout() {
-  const adminCookie = cookies().get('admin_user');
+  const adminCookie = await cookies().get('admin_user');
   if (adminCookie) {
     await logAdminAction('Admin Logged Out');
   }
-  cookies().delete('auth');
-  cookies().delete('admin_user');
+  await cookies().delete('auth');
+  await cookies().delete('admin_user');
   redirect('/login');
 }
 
@@ -380,7 +380,7 @@ export async function addAdmin(data: unknown) {
 
 export async function deleteAdmin(adminId: string) {
     try {
-        const adminCookie = cookies().get('admin_user');
+        const adminCookie = await cookies().get('admin_user');
         if (!adminCookie) return { error: 'Authentication required.' };
         
         const currentUser = JSON.parse(adminCookie.value);

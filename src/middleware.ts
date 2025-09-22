@@ -2,8 +2,8 @@
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
  
-export function middleware(request: NextRequest) {
-  const hasAuth = request.cookies.has('auth');
+export async function middleware(request: NextRequest) {
+  const hasAuth = await request.cookies.has('auth');
   const { pathname } = request.nextUrl;
 
   // Allow access to login page
