@@ -37,6 +37,8 @@ export default function PCsPage() {
 
   useEffect(() => {
     fetchPcs();
+    const interval = setInterval(fetchPcs, 5000); // Poll every 5 seconds
+    return () => clearInterval(interval); // Cleanup on component unmount
   }, []);
 
   const handleAction = (pcId: string, action: 'approve' | 'reject' | 'delete') => {
