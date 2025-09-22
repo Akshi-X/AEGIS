@@ -399,7 +399,7 @@ export async function deleteAdmin(adminId: string) {
         }
         
         if (adminToDelete.username === currentUser.username) {
-            return { error: 'Superadmins cannot delete their own account.' };
+            return { error: 'You cannot delete your own account.' };
         }
 
         await adminsCollection.deleteOne({ _id: adminToDeleteId });
