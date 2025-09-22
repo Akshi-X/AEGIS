@@ -222,14 +222,28 @@ export async function getStudents(): Promise<WithId<Student>[]> {
 
 export async function getPcs(): Promise<WithId<PC>[]> {
     const pcsCollection = await getPcsCollection();
-    // Using an aggregation pipeline to fetch the assigned student's name
     const pcs = await pcsCollection.aggregate([
         {
             $lookup: {
                 from: 'students',
-                let: { studentId: { $toObjectId: '$assignedStudentId' } },
+                let: { studentId: '$assignedStudentId' },
                 pipeline: [
-                    { $match: { $expr: { $eq: ['$_id', '$$studentId'] } } },
+                    { 
+                        $match: { 
+                            $expr: { 
+                                $eq: [ 
+                                    '$_id', 
+                                    { 
+                                        $cond: {
+                                            if: { $ne: ['$$studentId', null] },
+                                            then: { $toObjectId: '$$studentId' },
+                                            else: null
+                                        }
+                                    } 
+                                ] 
+                            } 
+                        } 
+                    },
                     { $project: { name: 1, _id: 0 } }
                 ],
                 as: 'assignedStudent'
@@ -251,7 +265,7 @@ export async function getPcs(): Promise<WithId<PC>[]> {
                 assignedStudent: 0
             }
         }
-    ]).toArray();
+    ]).sort({ name: 1 }).toArray();
     
     return pcs.map(pc => ({
         ...(pc as WithId<PC>),
@@ -587,3 +601,5 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
   }
 }
 
+
+    
