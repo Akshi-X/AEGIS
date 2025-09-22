@@ -1,3 +1,4 @@
+
 'use client';
 
 import { getAdmins, deleteAdmin } from '@/lib/actions';
@@ -88,7 +89,7 @@ export default function SettingsPage() {
                                             </Badge>
                                         </TableCell>
                                          <TableCell className="text-right">
-                                             {currentUser?.role === 'superadmin' && currentUser?.username !== admin.username && (
+                                             {currentUser?.role === 'superadmin' && currentUser?.username !== admin.username ? (
                                                 <AlertDialog>
                                                     <DropdownMenu>
                                                         <DropdownMenuTrigger asChild>
@@ -120,6 +121,8 @@ export default function SettingsPage() {
                                                         </AlertDialogFooter>
                                                     </AlertDialogContent>
                                                 </AlertDialog>
+                                            ) : (
+                                                <div className="h-8 w-8" /> 
                                             )}
                                         </TableCell>
                                     </TableRow>
