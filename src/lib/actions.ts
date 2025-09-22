@@ -384,9 +384,6 @@ export async function deleteAdmin(adminId: string) {
         if (!adminCookie) return { error: 'Authentication required.' };
         
         const currentUser = JSON.parse(adminCookie.value);
-        if (currentUser.role !== 'superadmin') {
-            return { error: 'Only superadmins can delete accounts.' };
-        }
 
         const { ObjectId } = await import('mongodb');
         const adminToDeleteId = new ObjectId(adminId);
