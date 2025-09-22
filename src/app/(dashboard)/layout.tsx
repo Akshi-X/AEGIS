@@ -6,6 +6,7 @@ import {
   SidebarHeader,
   SidebarInset,
   SidebarFooter,
+  SidebarProvider,
 } from '@/components/ui/sidebar';
 import { DashboardNav } from '@/components/dashboard-nav';
 import { Header } from '@/components/header';
