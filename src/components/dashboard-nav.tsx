@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users } from 'lucide-react';
+import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users, Settings, History } from 'lucide-react';
 
 import {
   SidebarMenu,
@@ -17,6 +17,8 @@ const navItems = [
   { href: '/dashboard/students', icon: Users, label: 'Students' },
   { href: '/dashboard/questions', icon: FileQuestion, label: 'Questions' },
   { href: '/dashboard/exams', icon: ClipboardList, label: 'Exams' },
+  { href: '/dashboard/logs', icon: History, label: 'Logs'},
+  { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
 
 export function DashboardNav() {

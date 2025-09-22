@@ -3,10 +3,10 @@
 
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
 import { z } from 'zod';
-import { getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
+import { getAdminsCollection, getAdminLogsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
 import { WithId, Document } from 'mongodb';
-import type { Question, Student, PC, Exam } from './types';
+import type { Question, Student, PC, Exam, Admin } from './types';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
@@ -30,6 +30,25 @@ type FormState = {
         questionText?: string[];
     };
 }
+
+async function logAdminAction(action: string, details: Record<string, any> = {}) {
+    try {
+        const adminLogsCollection = await getAdminLogsCollection();
+        const adminCookie = cookies().get('admin_user');
+        const admin = adminCookie ? JSON.parse(adminCookie.value) : { username: 'System' };
+        
+        await adminLogsCollection.insertOne({
+            adminUsername: admin.username,
+            action,
+            details,
+            timestamp: new Date(),
+        });
+        revalidatePath('/dashboard/logs');
+    } catch (error) {
+        console.error('Failed to log admin action:', error);
+    }
+}
+
 
 export async function getAiSuggestions(prevState: FormState, formData: FormData): Promise<FormState> {
   const validatedFields = z.object({ questionText: z.string() }).safeParse({
@@ -76,6 +95,7 @@ export async function saveQuestion(data: unknown) {
     try {
         const questionsCollection = await getQuestionsCollection();
         await questionsCollection.insertOne(validatedFields.data);
+        await logAdminAction('Created Question', { questionText: validatedFields.data.questionText });
         revalidatePath('/dashboard/questions');
         revalidatePath('/dashboard');
     } catch(e) {
@@ -105,6 +125,7 @@ export async function addStudent(data: unknown) {
   try {
     const studentsCollection = await getStudentsCollection();
     await studentsCollection.insertOne(validatedFields.data);
+    await logAdminAction('Added Student', { studentName: validatedFields.data.name, rollNumber: validatedFields.data.rollNumber });
     revalidatePath('/dashboard/students');
     revalidatePath('/dashboard');
     return { success: true };
@@ -116,8 +137,7 @@ export async function addStudent(data: unknown) {
   }
 }
 
-// Generic function to fetch documents and map them
-async function fetchAndMapDocuments<T extends Document>(collectionName: 'students' | 'pcs' | 'questions' | 'exams'): Promise<WithId<T>[]> {
+async function fetchAndMapDocuments<T extends Document>(collectionName: 'students' | 'pcs' | 'questions' | 'exams' | 'admins' | 'admin_logs'): Promise<WithId<T>[]> {
   let collection;
   switch (collectionName) {
     case 'students':
@@ -132,16 +152,23 @@ async function fetchAndMapDocuments<T extends Document>(collectionName: 'student
     case 'exams':
       collection = await getExamsCollection();
       break;
+    case 'admins':
+      collection = await getAdminsCollection();
+      break;
+    case 'admin_logs':
+      collection = await getAdminLogsCollection();
+      break;
     default:
       throw new Error('Invalid collection name');
   }
 
-  const documents = await collection.find({}).toArray();
+  const documents = await collection.find({}).sort({ timestamp: -1 }).toArray();
   return documents.map(doc => ({
     ...doc,
     _id: doc._id.toString(),
   })) as WithId<T>[];
 }
+
 
 export async function getStudents(): Promise<WithId<Student>[]> {
   try {
@@ -180,23 +207,70 @@ export async function getExams(): Promise<WithId<Exam>[]> {
     }
 }
 
+export async function getAdmins(): Promise<WithId<Admin>[]> {
+  try {
+    return fetchAndMapDocuments<Admin>('admins');
+  } catch (error) {
+    console.error('Error fetching admins:', error);
+    return [];
+  }
+}
+
+export async function getAdminLogs() {
+  try {
+    const logs = await fetchAndMapDocuments<any>('admin_logs');
+    return logs;
+  } catch (error) {
+    console.error('Error fetching admin logs:', error);
+    return [];
+  }
+}
+
 // Authentication Actions
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin';
 
 export async function authenticate(prevState: any, formData: FormData) {
-  const password = formData.get('password');
-  if (password === ADMIN_PASSWORD) {
-    cookies().set('auth', 'true', { httpOnly: true, path: '/' });
-    redirect('/dashboard');
-  } else {
-    return {
-      message: 'Incorrect password. Please try again.',
-    };
-  }
+    const username = formData.get('username') as string;
+    const password = formData.get('password') as string;
+
+    const adminsCollection = await getAdminsCollection();
+    const adminCount = await adminsCollection.countDocuments();
+
+    // Special case: If no admins exist, create the first one from .env password
+    if (adminCount === 0 && username === 'admin' && password === ADMIN_PASSWORD) {
+        const newAdmin: Omit<Admin, '_id'> = { username: 'admin', password: ADMIN_PASSWORD, role: 'superadmin' };
+        await adminsCollection.insertOne(newAdmin);
+        
+        const adminUser = { username: newAdmin.username, role: newAdmin.role };
+        cookies().set('auth', 'true', { httpOnly: true, path: '/' });
+        cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
+        await logAdminAction('Initial Admin Created');
+        redirect('/dashboard');
+    }
+
+    const admin = await adminsCollection.findOne({ username });
+
+    if (admin && admin.password === password) {
+        const adminUser = { username: admin.username, role: admin.role };
+        cookies().set('auth', 'true', { httpOnly: true, path: '/' });
+        cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
+        await logAdminAction('Admin Logged In');
+        redirect('/dashboard');
+    } else {
+        return {
+            message: 'Invalid username or password.',
+        };
+    }
 }
 
+
 export async function logout() {
+  const adminCookie = cookies().get('admin_user');
+  if (adminCookie) {
+    await logAdminAction('Admin Logged Out');
+  }
   cookies().delete('auth');
+  cookies().delete('admin_user');
   redirect('/login');
 }
 
@@ -223,7 +297,7 @@ export async function registerPc(prevState: any, formData: FormData) {
         
         const newPc: Omit<PC, '_id'> = {
             name: pcName,
-            ipAddress: 'N/A', // IP address will be captured later
+            ipAddress: 'N/A',
             status: 'Pending',
             uniqueIdentifier: `pc-id-${generateRandomString(8)}`
         };
@@ -242,7 +316,10 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
   try {
     const pcsCollection = await getPcsCollection();
     const { ObjectId } = await import('mongodb');
+    const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
+
     await pcsCollection.updateOne({ _id: new ObjectId(pcId) }, { $set: { status } });
+    await logAdminAction(`PC Status Updated`, { pcName: pc?.name, newStatus: status });
     revalidatePath('/dashboard/pcs');
     return { success: true };
   } catch (error) {
@@ -255,11 +332,48 @@ export async function deletePc(pcId: string) {
     try {
         const pcsCollection = await getPcsCollection();
         const { ObjectId } = await import('mongodb');
+        const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
+
         await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
+        await logAdminAction(`PC Deleted`, { pcName: pc?.name });
         revalidatePath('/dashboard/pcs');
         return { success: true };
     } catch (error) {
         console.error('Error deleting PC:', error);
         return { error: 'Failed to delete PC.' };
     }
+}
+
+export async function addAdmin(data: unknown) {
+  const adminSchema = z.object({
+    username: z.string().min(3, "Username must be at least 3 characters."),
+    password: z.string().min(6, "Password must be at least 6 characters."),
+    role: z.enum(['admin', 'superadmin']),
+  });
+
+  const validatedFields = adminSchema.safeParse(data);
+
+  if (!validatedFields.success) {
+    return {
+      errors: validatedFields.error.flatten().fieldErrors,
+    };
+  }
+  
+  try {
+    const adminsCollection = await getAdminsCollection();
+    const existingAdmin = await adminsCollection.findOne({ username: validatedFields.data.username });
+    if (existingAdmin) {
+      return { error: 'An admin with this username already exists.' };
+    }
+
+    await adminsCollection.insertOne(validatedFields.data);
+    await logAdminAction('Admin Created', { newAdminUsername: validatedFields.data.username, role: validatedFields.data.role });
+    revalidatePath('/dashboard/settings');
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return {
+      error: 'Failed to add new admin.',
+    };
+  }
 }

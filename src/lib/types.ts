@@ -34,3 +34,18 @@ export type Exam = {
   duration: number; // in minutes
   status: 'Scheduled' | 'In Progress' | 'Completed';
 };
+
+export type Admin = {
+    _id?: string | ObjectId;
+    username: string;
+    password: string; // In a real app, this should be a hashed password
+    role: 'admin' | 'superadmin';
+};
+
+export type AdminLog = {
+    _id?: string | ObjectId;
+    adminUsername: string;
+    action: string;
+    details?: Record<string, any>;
+    timestamp: Date;
+}

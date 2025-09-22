@@ -47,3 +47,13 @@ export async function getExamsCollection() {
     const db = await getDb();
     return db.collection('exams');
 }
+
+export async function getAdminsCollection() {
+    const db = await getDb();
+    return db.collection('admins');
+}
+
+export async function getAdminLogsCollection() {
+    const db = await getDb();
+    return db.collection('admin_logs');
+}

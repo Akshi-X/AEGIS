@@ -29,7 +29,7 @@ export default function LoginPage() {
             <CardHeader>
                 <CardTitle className="text-2xl">Admin Login</CardTitle>
                 <CardDescription>
-                Enter the administrator password to access the dashboard.
+                Enter your administrator credentials to access the dashboard.
                 </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -40,6 +40,16 @@ export default function LoginPage() {
                         <AlertDescription>{state.message}</AlertDescription>
                     </Alert>
                 )}
+                <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                        id="username"
+                        name="username"
+                        type="text"
+                        defaultValue="admin"
+                        required
+                    />
+                </div>
                 <div className="space-y-2">
                 <Label htmlFor="password">Password</Label>
                 <Input

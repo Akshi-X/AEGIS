@@ -1,4 +1,5 @@
 
+'use client';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Search, User, LogOut } from 'lucide-react';
@@ -13,8 +14,20 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { logout } from '@/lib/actions';
+import { useEffect, useState } from 'react';
+import Cookies from 'js-cookie';
+import Link from 'next/link';
 
 export function Header() {
+  const [user, setUser] = useState({ username: 'Admin', role: 'admin' });
+
+   useEffect(() => {
+    const userCookie = Cookies.get('admin_user');
+    if (userCookie) {
+      setUser(JSON.parse(userCookie));
+    }
+  }, []);
+
   return (
     <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center justify-between gap-4 border-b bg-background px-4 sm:px-6">
       <SidebarTrigger className="md:hidden" />
@@ -34,7 +47,7 @@ export function Header() {
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="relative size-9 rounded-full">
               <Avatar className="size-9">
-                <AvatarImage src="https://i.pravatar.cc/150?u=a042581f4e29026704d" alt="Admin" />
+                <AvatarImage src={`https://i.pravatar.cc/150?u=${user.username}`} alt={user.username} />
                 <AvatarFallback>
                   <User className="size-5" />
                 </AvatarFallback>
@@ -44,7 +57,9 @@ export function Header() {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>My Account</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>Settings</DropdownMenuItem>
+             <Link href="/dashboard/settings" passHref>
+                <DropdownMenuItem>Settings</DropdownMenuItem>
+             </Link>
             <DropdownMenuItem>Support</DropdownMenuItem>
             <DropdownMenuSeparator />
              <form action={logout} className="w-full">
