@@ -10,9 +10,7 @@ import { useEffect, useState, useTransition } from 'react';
 import type { Admin } from '@/lib/types';
 import type { WithId } from 'mongodb';
 import Cookies from 'js-cookie';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -40,7 +38,12 @@ export default function SettingsPage() {
     useEffect(() => {
         const userCookie = Cookies.get('admin_user');
         if (userCookie) {
-            setCurrentUser(JSON.parse(userCookie.value));
+            try {
+                setCurrentUser(JSON.parse(userCookie));
+            } catch(e) {
+                console.error("Failed to parse admin_user cookie", e);
+                setCurrentUser(null);
+            }
         }
         fetchAdmins();
     }, []);
