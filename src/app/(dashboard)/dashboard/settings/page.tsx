@@ -40,7 +40,7 @@ export default function SettingsPage() {
     useEffect(() => {
         const userCookie = Cookies.get('admin_user');
         if (userCookie) {
-            setCurrentUser(JSON.parse(userCookie));
+            setCurrentUser(JSON.parse(userCookie.value));
         }
         fetchAdmins();
     }, []);
