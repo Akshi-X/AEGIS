@@ -17,7 +17,6 @@ import { Button } from '@/components/ui/button';
 import { MoreHorizontal } from 'lucide-react';
 import { deleteAdmin } from '@/lib/actions';
 import { useToast } from '@/hooks/use-toast';
-import { revalidatePath } from 'next/cache';
 
 interface AdminDeleteButtonProps {
     adminId: string;
