@@ -256,11 +256,11 @@ export async function authenticate(prevState: any, formData: FormData) {
         cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
         await logAdminAction('Admin Logged In');
         redirect('/dashboard');
-    } else {
-        return {
-            message: 'Invalid username or password.',
-        };
     }
+
+    return {
+        message: 'Invalid username or password.',
+    };
 }
 
 
@@ -411,3 +411,5 @@ export async function deleteAdmin(adminId: string) {
         return { error: 'Failed to delete admin.' };
     }
 }
+
+    
