@@ -1,8 +1,8 @@
 
 'use client';
 
-import { useEffect, useState, useActionState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useState, useEffect } from 'react';
+import { useFormStatus, useActionState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -12,7 +12,6 @@ import { getAiSuggestions, saveQuestion } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -24,7 +23,7 @@ const questionFormSchema = z.object({
     message: "Question text must be at least 10 characters.",
   }),
   options: z.array(z.object({ text: z.string().min(1, "Option text cannot be empty.") })).min(2, "At least two options are required."),
-  correctOptions: z.array(z.number()).min(1, "At least one correct option must be selected."),
+  correctOptions: z.array(z.coerce.number()).min(1, "At least one correct option must be selected."),
   category: z.enum(['Easy', 'Medium', 'Hard']),
   tags: z.array(z.string()),
   weight: z.coerce.number().min(0),
@@ -37,10 +36,10 @@ const initialState = {
   message: '',
 };
 
-function SubmitButton() {
+function AiSuggestButton({ formAction }: { formAction: (payload: FormData) => void }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" form="ai-form" disabled={pending}>
+    <Button type="submit" formAction={formAction} disabled={pending}>
       {pending ? 'Thinking...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest with AI</>}
     </Button>
   );
@@ -138,10 +137,7 @@ export function QuestionForm() {
                 />
               </CardContent>
               <CardFooter>
-                  <form action={formAction} id="ai-form">
-                    <input type="hidden" name="questionText" value={form.watch('questionText')} />
-                    <SubmitButton />
-                  </form>
+                 <AiSuggestButton formAction={formAction} />
               </CardFooter>
             </Card>
 
