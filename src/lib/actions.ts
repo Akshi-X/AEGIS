@@ -411,5 +411,3 @@ export async function deleteAdmin(adminId: string) {
         return { error: 'Failed to delete admin.' };
     }
 }
-
-    
