@@ -221,28 +221,62 @@ export async function getStudents(): Promise<WithId<Student>[]> {
 }
 
 export async function getPcs(): Promise<WithId<PC>[]> {
-    try {
-        return fetchAndMapDocuments<PC>('pcs');
-    } catch (error) {
-        console.error('Error fetching PCs:', error);
-        return [];
-    }
+    const pcsCollection = await getPcsCollection();
+    // Using an aggregation pipeline to fetch the assigned student's name
+    const pcs = await pcsCollection.aggregate([
+        {
+            $lookup: {
+                from: 'students',
+                let: { studentId: { $toObjectId: '$assignedStudentId' } },
+                pipeline: [
+                    { $match: { $expr: { $eq: ['$_id', '$$studentId'] } } },
+                    { $project: { name: 1, _id: 0 } }
+                ],
+                as: 'assignedStudent'
+            }
+        },
+        {
+            $unwind: {
+                path: '$assignedStudent',
+                preserveNullAndEmptyArrays: true
+            }
+        },
+        {
+            $addFields: {
+                assignedStudentName: '$assignedStudent.name'
+            }
+        },
+        {
+            $project: {
+                assignedStudent: 0
+            }
+        }
+    ]).toArray();
+    
+    return pcs.map(pc => ({
+        ...(pc as WithId<PC>),
+        _id: pc._id.toString(),
+    }));
 }
+
 
 export async function getQuestions(): Promise<WithId<Question>[]> {
     try {
-        const questions = await fetchAndMapDocuments<Question>('questions');
+        const questionsCollection = await getQuestionsCollection();
+        const questions = await questionsCollection.find({}).toArray();
+        
         // This mapping is crucial to handle both `text` and `questionText` fields
         return questions.map(q => ({
-            ...q,
-            // @ts-ignore
-            text: q.text || q.questionText,
+            ...(q as any),
+            _id: q._id.toString(),
+            text: q.text || (q as any).questionText,
         }));
     } catch (error) {
         console.error('Error fetching questions:', error);
         return [];
     }
 }
+
 
 export async function getExams(): Promise<WithId<Exam>[]> {
     try {
@@ -514,3 +548,42 @@ export async function deleteExam(examId: string) {
         return { error: 'Failed to delete exam.' };
     }
 }
+
+
+export async function assignStudentToPc(pcId: string, studentId: string | null) {
+  try {
+    const pcsCollection = await getPcsCollection();
+    const studentsCollection = await getStudentsCollection();
+    
+    // If we're assigning a student
+    if (studentId) {
+        const studentObjectId = new ObjectId(studentId);
+      // Check if this student is already assigned to another PC
+      const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentId, _id: { $ne: new ObjectId(pcId) } });
+      if (existingAssignment) {
+        return { error: 'This student is already assigned to another PC.' };
+      }
+    }
+
+    // Update the PC with the new assignment (or null to unassign)
+    await pcsCollection.updateOne(
+      { _id: new ObjectId(pcId) },
+      { $set: { assignedStudentId: studentId } }
+    );
+    
+    const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
+    const student = studentId ? await studentsCollection.findOne({ _id: new ObjectId(studentId) }) : null;
+
+    await logAdminAction('Assigned Student to PC', {
+      pcName: pc?.name,
+      studentName: student ? student.name : 'None'
+    });
+
+    revalidatePath('/dashboard/pcs');
+    return { success: true };
+  } catch (error) {
+    console.error('Error assigning student to PC:', error);
+    return { error: 'Failed to assign student.' };
+  }
+}
+

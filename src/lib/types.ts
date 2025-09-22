@@ -14,6 +14,8 @@ export type PC = {
   ipAddress: string;
   status: 'Pending' | 'Approved' | 'Rejected';
   uniqueIdentifier: string;
+  assignedStudentId?: string | ObjectId;
+  assignedStudentName?: string;
 };
 
 export type Question = {
@@ -46,7 +48,7 @@ export type Admin = {
 
 export type AdminLog = {
     _id?: string | ObjectId;
-    adminUsername: string;
+    adminUsername:string;
     action: string;
     details?: Record<string, any>;
     timestamp: Date;

@@ -1,6 +1,6 @@
 
 'use client';
-import { getPcs, updatePcStatus, deletePc } from '@/lib/actions';
+import { getPcs, updatePcStatus, deletePc, getStudents, assignStudentToPc } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -17,27 +17,38 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal } from 'lucide-react';
+import { MoreHorizontal, User, ChevronsUpDown } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useEffect, useState, useTransition } from 'react';
-import type { PC } from '@/lib/types';
+import type { PC, Student } from '@/lib/types';
 import type { WithId } from 'mongodb';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 
 export default function PCsPage() {
   const [pcs, setPcs] = useState<WithId<PC>[]>([]);
+  const [students, setStudents] = useState<WithId<Student>[]>([]);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
+  
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [selectedPc, setSelectedPc] = useState<WithId<PC> | null>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [popoverOpen, setPopoverOpen] = useState(false);
 
-  const fetchPcs = () => {
+
+  const fetchPcsAndStudents = () => {
     getPcs().then(setPcs);
+    getStudents().then(setStudents);
   };
 
   useEffect(() => {
-    fetchPcs();
-    const interval = setInterval(fetchPcs, 5000); // Poll every 5 seconds
+    fetchPcsAndStudents();
+    const interval = setInterval(fetchPcsAndStudents, 5000); // Poll every 5 seconds
     return () => clearInterval(interval); // Cleanup on component unmount
   }, []);
 
@@ -54,14 +65,38 @@ export default function PCsPage() {
 
         if(result?.success) {
             toast({ title: 'Success', description: `PC has been ${action}d.` });
-            fetchPcs();
+            fetchPcsAndStudents();
         } else {
             toast({ title: 'Error', description: result?.error || 'An error occurred.', variant: 'destructive' });
         }
     });
   }
 
+  const handleOpenAssignDialog = (pc: WithId<PC>) => {
+    setSelectedPc(pc);
+    setSelectedStudentId(pc.assignedStudentId?.toString() || null);
+    setAssignDialogOpen(true);
+  }
+
+  const handleAssignStudent = () => {
+    if (!selectedPc) return;
+
+    startTransition(async () => {
+      const result = await assignStudentToPc(selectedPc._id.toString(), selectedStudentId);
+      if (result.success) {
+        toast({ title: 'Success', description: 'Student assignment updated.' });
+        fetchPcsAndStudents();
+        setAssignDialogOpen(false);
+      } else {
+        toast({ title: 'Error', description: result.error || 'Failed to assign student.', variant: 'destructive' });
+      }
+    });
+  }
+  
+  const selectedStudentName = selectedStudentId ? students.find(s => s._id.toString() === selectedStudentId)?.name : 'Unassigned';
+
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>PC Management</CardTitle>
@@ -74,6 +109,7 @@ export default function PCsPage() {
           <TableHeader>
             <TableRow>
               <TableHead>PC Name</TableHead>
+              <TableHead>Assigned Student</TableHead>
               <TableHead>IP Address</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Identifier</TableHead>
@@ -84,6 +120,16 @@ export default function PCsPage() {
             {pcs.map((pc) => (
               <TableRow key={pc._id as string}>
                 <TableCell className="font-medium">{pc.name}</TableCell>
+                <TableCell>
+                    {pc.assignedStudentName ? (
+                        <div className="flex items-center gap-2">
+                           <User className="h-4 w-4 text-muted-foreground" />
+                           <span>{pc.assignedStudentName}</span>
+                        </div>
+                    ) : (
+                        <span className="text-muted-foreground">Unassigned</span>
+                    )}
+                </TableCell>
                 <TableCell>{pc.ipAddress}</TableCell>
                 <TableCell>
                   <Badge
@@ -112,6 +158,9 @@ export default function PCsPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                       {pc.status === 'Approved' && (
+                        <DropdownMenuItem onClick={() => handleOpenAssignDialog(pc)}>Assign Student</DropdownMenuItem>
+                      )}
                       {pc.status !== 'Approved' && (
                         <DropdownMenuItem onClick={() => handleAction(pc._id as string, 'approve')}>Approve</DropdownMenuItem>
                       )}
@@ -130,5 +179,56 @@ export default function PCsPage() {
         </Table>
       </CardContent>
     </Card>
+
+     <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Assign Student to {selectedPc?.name}</DialogTitle>
+                <DialogDescription>
+                    Select a student to assign to this PC. A student can only be assigned to one PC at a time.
+                </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+               <Popover open={popoverOpen} onOpenChange={setPopoverOpen}>
+                <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={popoverOpen} className="w-full justify-between">
+                        {selectedStudentName}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                    <Command>
+                        <CommandInput placeholder="Search students..." />
+                        <CommandList>
+                            <CommandEmpty>No students found.</CommandEmpty>
+                            <CommandGroup>
+                                <CommandItem onSelect={() => setSelectedStudentId(null)}>Unassigned</CommandItem>
+                                {students.map((student) => (
+                                    <CommandItem
+                                        key={student._id.toString()}
+                                        value={student.name}
+                                        onSelect={() => {
+                                            setSelectedStudentId(student._id.toString());
+                                            setPopoverOpen(false);
+                                        }}
+                                    >
+                                        {student.name} ({student.rollNumber})
+                                    </CommandItem>
+                                ))}
+                            </CommandGroup>
+                        </CommandList>
+                    </Command>
+                </PopoverContent>
+            </Popover>
+            </div>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setAssignDialogOpen(false)}>Cancel</Button>
+                <Button onClick={handleAssignStudent} disabled={isPending}>
+                    {isPending ? 'Saving...' : 'Save Assignment'}
+                </Button>
+            </DialogFooter>
+        </DialogContent>
+    </Dialog>
+    </>
   );
 }
