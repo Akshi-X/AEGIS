@@ -377,3 +377,37 @@ export async function addAdmin(data: unknown) {
     };
   }
 }
+
+export async function deleteAdmin(adminId: string) {
+    try {
+        const adminCookie = cookies().get('admin_user');
+        if (!adminCookie) return { error: 'Authentication required.' };
+        
+        const currentUser = JSON.parse(adminCookie.value);
+        if (currentUser.role !== 'superadmin') {
+            return { error: 'Only superadmins can delete accounts.' };
+        }
+
+        const { ObjectId } = await import('mongodb');
+        const adminToDeleteId = new ObjectId(adminId);
+
+        const adminsCollection = await getAdminsCollection();
+        const adminToDelete = await adminsCollection.findOne({ _id: adminToDeleteId });
+
+        if (!adminToDelete) {
+            return { error: 'Admin not found.' };
+        }
+        
+        if (adminToDelete.username === currentUser.username) {
+            return { error: 'Superadmins cannot delete their own account.' };
+        }
+
+        await adminsCollection.deleteOne({ _id: adminToDeleteId });
+        await logAdminAction(`Admin Deleted`, { deletedAdminUsername: adminToDelete.username });
+        revalidatePath('/dashboard/settings');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting admin:', error);
+        return { error: 'Failed to delete admin.' };
+    }
+}
