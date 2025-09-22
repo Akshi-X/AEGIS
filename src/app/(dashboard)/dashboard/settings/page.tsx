@@ -14,14 +14,9 @@ import { AdminDeleteButton } from '@/components/admin-delete-button';
 
 export default async function SettingsPage() {
     const admins = await getAdmins();
-    const cookieStore = cookies();
-    const userCookie = await cookieStore.get('admin_user');
+    const cookieStore = await cookies();
+    const userCookie = cookieStore.get('admin_user');
     const currentUser = userCookie ? JSON.parse(userCookie.value) : null;
-
-    const onAdminAdded = async () => {
-        'use server';
-        revalidatePath('/dashboard/settings');
-    }
 
     return (
         <div className="grid gap-6 lg:grid-cols-3">
@@ -64,7 +59,7 @@ export default async function SettingsPage() {
                 </Card>
             </div>
             <div>
-                <AddAdminForm onAdminAdded={onAdminAdded} />
+                <AddAdminForm />
             </div>
         </div>
     )
