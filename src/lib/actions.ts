@@ -13,7 +13,7 @@ import { cookies } from 'next/headers';
 const questionSchema = z.object({
   questionText: z.string().min(10, 'Question text must be at least 10 characters long.'),
   options: z.array(z.object({ text: z.string().min(1, "Option text cannot be empty.") })).min(2, "At least two options are required."),
-  correctOptions: z.array(z.string().or(z.number())).min(1, "At least one correct option must be selected.").transform(arr => arr.map(Number)),
+  correctOptions: z.array(z.number()).min(1, "At least one correct option must be selected."),
   category: z.enum(['Easy', 'Medium', 'Hard']),
   tags: z.array(z.string()),
   weight: z.coerce.number().min(0),
@@ -467,5 +467,7 @@ export async function deleteExam(examId: string) {
         return { error: 'Failed to delete exam.' };
     }
 }
+
+    
 
     
