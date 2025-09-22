@@ -13,7 +13,7 @@ import { cookies } from 'next/headers';
 const questionSchema = z.object({
   questionText: z.string().min(10, 'Question text must be at least 10 characters long.'),
   options: z.array(z.object({ text: z.string().min(1, "Option text cannot be empty.") })).min(2, "At least two options are required."),
-  correctOptions: z.array(z.number()).min(1, "At least one correct option must be selected."),
+  correctOptions: z.array(z.coerce.number()).min(1, "At least one correct option must be selected."),
   category: z.enum(['Easy', 'Medium', 'Hard']),
   tags: z.array(z.string()),
   weight: z.coerce.number().min(0),
@@ -238,8 +238,8 @@ export async function authenticate(prevState: any, formData: FormData) {
 
     if (admin && admin.password === password) {
         const adminUser = { username: admin.username, role: admin.role };
-        await cookies().set('auth', 'true', { httpOnly: true, path: '/' });
-        await cookies().set('admin_user', JSON.stringify(adminUser), { httpOnly: true, path: '/' });
+        await cookies().set('auth', 'true', { path: '/' });
+        await cookies().set('admin_user', JSON.stringify(adminUser), { path: '/' });
         await logAdminAction('Admin Logged In');
         redirect('/dashboard');
     }
@@ -467,7 +467,5 @@ export async function deleteExam(examId: string) {
         return { error: 'Failed to delete exam.' };
     }
 }
-
-    
 
     
