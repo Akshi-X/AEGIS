@@ -12,7 +12,9 @@ import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
 const questionSchema = z.object({
-  questionText: z.string().min(10, 'Question text must be at least 10 characters long.'),
+  questionText: z.string().min(10, {
+    message: "Question text must be at least 10 characters.",
+  }),
   options: z.array(z.object({ text: z.string().min(1, "Option text cannot be empty.") })).min(2, "At least two options are required."),
   correctOptions: z.array(z.coerce.number()).min(1, "At least one correct option must be selected."),
   category: z.enum(['Easy', 'Medium', 'Hard']),
@@ -44,7 +46,7 @@ type FullQuestionSuggestionState = {
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
         const adminLogsCollection = await getAdminLogsCollection();
-        const adminCookie = await cookies().get('admin_user');
+        const adminCookie = cookies().get('admin_user');
         const admin = adminCookie ? JSON.parse(adminCookie.value) : { username: 'System' };
         
         await adminLogsCollection.insertOne({
@@ -229,7 +231,13 @@ export async function getPcs(): Promise<WithId<PC>[]> {
 
 export async function getQuestions(): Promise<WithId<Question>[]> {
     try {
-        return fetchAndMapDocuments<Question>('questions');
+        const questions = await fetchAndMapDocuments<Question>('questions');
+        // This mapping is crucial to handle both `text` and `questionText` fields
+        return questions.map(q => ({
+            ...q,
+            // @ts-ignore
+            text: q.text || q.questionText,
+        }));
     } catch (error) {
         console.error('Error fetching questions:', error);
         return [];
@@ -290,7 +298,7 @@ export async function authenticate(prevState: any, formData: FormData) {
 
 
 export async function logout() {
-  const adminCookie = await cookies().get('admin_user');
+  const adminCookie = cookies().get('admin_user');
   if (adminCookie) {
     await logAdminAction('Admin Logged Out');
   }
@@ -403,7 +411,7 @@ export async function addAdmin(data: unknown) {
 
 export async function deleteAdmin(adminId: string) {
     try {
-        const adminCookie = await cookies().get('admin_user');
+        const adminCookie = cookies().get('admin_user');
         if (!adminCookie) return { error: 'Authentication required.' };
         
         const currentUser = JSON.parse(adminCookie.value);
