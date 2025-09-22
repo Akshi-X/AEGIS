@@ -17,7 +17,12 @@ const adminSchema = z.object({
   role: z.enum(['admin', 'superadmin']),
 });
 
-export function AddAdminForm() {
+interface AddAdminFormProps {
+    onAdminAdded: () => void;
+}
+
+
+export function AddAdminForm({ onAdminAdded }: AddAdminFormProps) {
     const { toast } = useToast();
     const form = useForm({
         resolver: zodResolver(adminSchema),
@@ -33,6 +38,7 @@ export function AddAdminForm() {
         if (result?.success) {
             toast({ title: "Admin Added", description: "The new admin has been created." });
             form.reset();
+            onAdminAdded();
         } else {
             toast({ title: "Error", description: result?.error || "An unknown error occurred.", variant: "destructive" });
         }
