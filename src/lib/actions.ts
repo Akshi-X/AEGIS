@@ -2,6 +2,7 @@
 'use server';
 
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
+import { suggestFullQuestion, SuggestFullQuestionOutput } from '@/ai/flows/suggest-full-question';
 import { z } from 'zod';
 import { getAdminsCollection, getAdminLogsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
@@ -30,6 +31,15 @@ type FormState = {
         questionText?: string[];
     };
 }
+
+type FullQuestionSuggestionState = {
+    message: string;
+    suggestion?: SuggestFullQuestionOutput;
+    errors?: {
+        topic?: string[];
+    };
+}
+
 
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
@@ -79,6 +89,31 @@ export async function getAiSuggestions(input: {questionText: string}): Promise<F
     };
   }
 }
+
+export async function getAiFullQuestionSuggestion(input: { topic: string }): Promise<FullQuestionSuggestionState> {
+    const validatedFields = z.object({ topic: z.string().min(3, "Topic must be at least 3 characters.") }).safeParse(input);
+
+    if (!validatedFields.success) {
+        return {
+            message: 'Invalid topic.',
+            errors: validatedFields.error.flatten().fieldErrors,
+        };
+    }
+
+    try {
+        const result = await suggestFullQuestion({ topic: validatedFields.data.topic });
+        return {
+            message: 'success',
+            suggestion: result,
+        };
+    } catch (error) {
+        console.error(error);
+        return {
+            message: 'Failed to get AI suggestion. Please try again later.',
+        };
+    }
+}
+
 
 export async function saveQuestion(data: unknown) {
     const validatedFields = questionSchema.safeParse(data);
@@ -465,7 +500,3 @@ export async function deleteExam(examId: string) {
         return { error: 'Failed to delete exam.' };
     }
 }
-
-    
-
-    

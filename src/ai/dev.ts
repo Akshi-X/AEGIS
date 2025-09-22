@@ -3,3 +3,4 @@ config();
 
 import '@/ai/flows/suggest-question-difficulty.ts';
 import '@/ai/flows/suggest-question-tags.ts';
+import '@/ai/flows/suggest-full-question.ts';
