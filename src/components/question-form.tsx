@@ -1,8 +1,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
-import { useFormStatus, useActionState } from 'react';
+import { useState, useEffect, useActionState, useFormStatus } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -108,6 +107,8 @@ export function QuestionForm() {
         title: "Question Submitted",
         description: "The new question has been saved.",
       })
+      form.reset();
+      setTags([]);
     }
   }
 
@@ -178,7 +179,7 @@ export function QuestionForm() {
                                 <Input {...field} placeholder={`Option ${index + 1}`} />
                             </FormControl>
                           
-                          <Button variant="ghost" size="icon" onClick={() => remove(index)} disabled={fields.length <= 2}>
+                          <Button type="button" variant="ghost" size="icon" onClick={() => remove(index)} disabled={fields.length <= 2}>
                             <X className="h-4 w-4" />
                           </Button>
                         </div>
@@ -187,9 +188,27 @@ export function QuestionForm() {
                     )}
                   />
                 ))}
+                 <FormField
+                    control={form.control}
+                    name="options"
+                    render={() => (
+                        <FormItem>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                 />
                 <Button type="button" variant="outline" size="sm" onClick={() => append({ text: '' })} disabled={fields.length >= 6}>
                   Add Option
                 </Button>
+                 <FormField
+                    control={form.control}
+                    name="correctOptions"
+                    render={() => (
+                        <FormItem>
+                            <FormMessage />
+                        </FormItem>
+                    )}
+                 />
               </CardContent>
             </Card>
           </div>
@@ -295,3 +314,5 @@ export function QuestionForm() {
     </Form>
   );
 }
+
+    
