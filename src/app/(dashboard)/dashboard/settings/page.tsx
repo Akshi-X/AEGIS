@@ -75,6 +75,7 @@ export default function SettingsPage() {
                                 <TableRow>
                                     <TableHead>Username</TableHead>
                                     <TableHead>Role</TableHead>
+                                    <TableHead className="text-right">Actions</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
@@ -85,6 +86,41 @@ export default function SettingsPage() {
                                             <Badge variant={admin.role === 'superadmin' ? 'default' : 'secondary'}>
                                                 {admin.role}
                                             </Badge>
+                                        </TableCell>
+                                         <TableCell className="text-right">
+                                             {currentUser?.role === 'superadmin' && currentUser?.username !== admin.username && (
+                                                <AlertDialog>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <Button variant="ghost" className="h-8 w-8 p-0" disabled={isPending}>
+                                                                <span className="sr-only">Open menu</span>
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </Button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end">
+                                                            <AlertDialogTrigger asChild>
+                                                                <DropdownMenuItem className="text-destructive">
+                                                                    Delete
+                                                                </DropdownMenuItem>
+                                                            </AlertDialogTrigger>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This action cannot be undone. This will permanently delete the admin account for <span className="font-bold">{admin.username}</span>.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                                            <AlertDialogAction onClick={() => handleDelete(admin._id as string)} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+                                                                Delete
+                                                            </AlertDialogAction>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            )}
                                         </TableCell>
                                     </TableRow>
                                 ))}
