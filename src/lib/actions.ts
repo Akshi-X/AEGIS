@@ -269,6 +269,56 @@ export async function getStudents(): Promise<WithId<Student>[]> {
   }
 }
 
+export async function updateStudent(data: unknown) {
+    const studentSchema = z.object({
+        id: z.string(),
+        name: z.string().min(1, "Name is required."),
+        rollNumber: z.string().min(1, "Roll number is required."),
+        classBatch: z.string().min(1, "Class/Batch is required."),
+        examId: z.string().optional(),
+    });
+
+    const validatedFields = studentSchema.safeParse(data);
+
+    if (!validatedFields.success) {
+        return {
+            errors: validatedFields.error.flatten().fieldErrors,
+        };
+    }
+
+    try {
+        const studentsCollection = await getStudentsCollection();
+        const { id, examId, ...studentData } = validatedFields.data;
+        const studentObjectId = new ObjectId(id);
+
+        const updateData: Partial<Student> = {
+            ...studentData,
+        };
+
+        if (examId) {
+            updateData.assignedExamId = new ObjectId(examId);
+        } else {
+            updateData.assignedExamId = undefined; // Or null, to unset it
+        }
+
+        await studentsCollection.updateOne(
+            { _id: studentObjectId },
+            { $set: updateData, ...( !examId && { $unset: { assignedExamId: "" } } ) }
+        );
+
+        await logAdminAction('Updated Student', { studentName: studentData.name, rollNumber: studentData.rollNumber });
+        revalidatePath('/dashboard/students');
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error) {
+        console.error(error);
+        return {
+            error: 'Failed to update student.',
+        };
+    }
+}
+
+
 export async function deleteStudent(studentId: string): Promise<{ success: boolean; error?: string }> {
     try {
         const studentObjectId = new ObjectId(studentId);
@@ -479,7 +529,7 @@ export async function registerPc(prevState: any, formData: FormData) {
             uniqueIdentifier: uniqueIdentifier
         };
 
-        await pcsCollection.insertOne(newPc);
+        const result = await pcsCollection.insertOne(newPc);
         revalidatePath('/dashboard/pcs');
 
         return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
@@ -782,7 +832,7 @@ export async function getExamDetails(examId: string) {
         const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
         
         if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
-            return null;
+             return { exam: null, questions: [] };
         }
 
         const questions = await getQuestions(exam.questionIds as ObjectId[]);
@@ -807,7 +857,7 @@ export async function getExamDetails(examId: string) {
 
     } catch (error) {
         console.error('Error fetching exam details:', error);
-        return null;
+        return { exam: null, questions: [] };
     }
 }
 
@@ -883,5 +933,3 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
         return [];
     }
 }
-
-    
