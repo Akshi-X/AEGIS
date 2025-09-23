@@ -586,11 +586,6 @@ export async function getPcStatus(identifier: string) {
             }
         }
         
-        // Fallback to PC's assigned exam if student doesn't have one.
-        if (!examIdToLookup && pc.assignedExamId) {
-            examIdToLookup = pc.assignedExamId;
-        }
-
         if (examIdToLookup) {
             const examsCollection = await getExamsCollection();
             const examResultsCollection = await getExamResultsCollection();
@@ -976,152 +971,27 @@ export async function getExamDetails(examId: string, studentId: string) {
     }
 }
 
-export async function submitExam(examId: string, studentId: string, answers: { questionId: string; selectedOption: number | null }[]) {
-    try {
-        const examsCollection = await getExamsCollection();
-        const studentsCollection = await getStudentsCollection();
-        const resultsCollection = await getExamResultsCollection();
-        const pcsCollection = await getPcsCollection();
+// Live Status
 
-        const examObjectId = new ObjectId(examId);
-        const studentObjectId = new ObjectId(studentId);
-
-        const exam = await examsCollection.findOne({ _id: examObjectId });
-        const student = await studentsCollection.findOne({ _id: studentObjectId });
-
-        if (!exam || !student) {
-            throw new Error('Exam or student not found.');
-        }
-
-        const questions = await getQuestions(exam.questionIds as ObjectId[]);
-        let score = 0;
-
-        for (const question of questions) {
-            const studentAnswer = answers.find(a => a.questionId === question._id.toString());
-            if (studentAnswer && studentAnswer.selectedOption !== null && question.correctOptions.includes(studentAnswer.selectedOption)) {
-                score += question.weight;
-            } else if (studentAnswer && studentAnswer.selectedOption !== null && question.negativeMarking) {
-                // Assuming negative marking deducts 1 point, can be more complex
-                score -= 1;
-            }
-        }
-        
-        const result: Omit<ExamResult, '_id'> = {
-            studentId: student._id,
-            examId: exam._id,
-            studentName: student.name,
-            examTitle: exam.title,
-            answers,
-            score: Math.max(0, score), // Ensure score is not negative
-            totalQuestions: questions.length,
-            completedAt: new Date(),
-        };
-
-        const insertedResult = await resultsCollection.insertOne(result);
-        
-        await studentsCollection.updateOne({ _id: student._id }, { $set: { examResultId: insertedResult.insertedId }});
-        
-        // Update PC live status to Finished
-        await pcsCollection.updateOne({ assignedStudentId: studentObjectId }, { $set: { liveStatus: 'Finished' } });
-
-
-        await logAdminAction('Exam Submitted', { studentName: student.name, examTitle: exam.title, score });
-        revalidatePath('/dashboard/results');
-        revalidatePath('/dashboard/live-status');
-        
-        return { success: true, resultId: insertedResult.insertedId.toString() };
-    } catch(error) {
-        console.error('Error submitting exam:', error);
-        return { success: false, error: 'Failed to submit exam.' };
-    }
-}
-
-
-export async function getExamResults(): Promise<WithId<ExamResult>[]> {
-    try {
-        const resultsCollection = await getExamResultsCollection();
-        const results = await resultsCollection.find({}).sort({ completedAt: -1 }).toArray();
-
-        return results.map(r => ({
-            ...r,
-            _id: r._id.toString(),
-            studentId: r.studentId.toString(),
-            examId: r.examId.toString(),
-            completedAt: r.completedAt,
-        })) as WithId<ExamResult>[];
-
-    } catch (error) {
-        console.error('Error fetching exam results:', error);
-        return [];
-    }
-}
-
-export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
-    const pcsCollection = await getPcsCollection();
-    const pcs = await pcsCollection.aggregate([
-        {
-            $match: { assignedStudentId: { $exists: true, $ne: null } }
-        },
-        {
-            $lookup: {
-                from: 'students',
-                localField: 'assignedStudentId',
-                foreignField: '_id',
-                as: 'student'
-            }
-        },
-        { $unwind: '$student' },
-        {
-            $lookup: {
-                from: 'exams',
-                localField: 'assignedExamId',
-                foreignField: '_id',
-                as: 'exam'
-            }
-        },
-        { 
-            $unwind: {
-                path: '$exam',
-                preserveNullAndEmptyArrays: true
-            }
-        },
-        {
-            $project: {
-                name: 1,
-                liveStatus: 1,
-                lastSeen: 1,
-                'student.name': 1,
-                'student.rollNumber': 1,
-                'exam.title': 1,
-                'exam.status': 1
-            }
-        }
-    ]).toArray();
-
-    return pcs.map(pc => {
-        const liveStatus = calculateLiveStatus(pc as any);
-        return {
-            ...pc,
-            _id: (pc._id as ObjectId).toString(),
-            liveStatus: liveStatus
-        } as WithId<PC>;
-    });
-}
-
-function calculateLiveStatus(pc: WithId<PC> & { exam?: Exam }): PC['liveStatus'] {
-    // If the student has finished, that's the final status.
-    if (pc.liveStatus === 'Finished') {
-        return 'Finished';
-    }
-
-    if (pc.liveStatus === 'Attempting') {
-         // Check if lastSeen is recent, e.g., within the last 30 seconds
-        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
-        if (pc.lastSeen && new Date(pc.lastSeen) > thirtySecondsAgo) {
-            return 'Attempting';
-        }
-        // If not seen recently while attempting, they might just be online but idle.
+function calculateLiveStatus(pc: WithId<PC> & { exam?: any }) {
+    // If no student is assigned, the PC is online.
+    if (!pc.assignedStudentId) {
         return 'Online';
+    }
+
+    // If a student is assigned but the PC hasn't been seen in a while, it's considered offline.
+    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+    if (pc.lastSeen && new Date(pc.lastSeen) < thirtySecondsAgo) {
+        return 'Offline';
+    }
+
+    // If the student is actively taking the exam.
+    if (pc.exam?.status === 'In Progress') {
+        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+        if (pc.lastSeen && new Date(pc.lastSeen) < thirtySecondsAgo) {
+            return 'Online'; // If not seen recently while attempting, they might just be idle.
+        }
+        return 'Attempting';
     }
 
     // If the assigned exam is actively in progress, the student is waiting to start.
@@ -1158,4 +1028,5 @@ export async function updatePcLiveStatus(pcIdentifier: string, status: PC['liveS
     }
 }
     
+
 
