@@ -446,7 +446,7 @@ export async function registerPc(prevState: any, formData: FormData) {
     const pcName = formData.get('pcName') as string;
     
     if (!pcName || pcName.trim().length < 3) {
-        return { message: "PC name must be at least 3 characters.", status: "error", pcIdentifier: null };
+        return { message: "PC name must be at least 3 characters.", status: "error" };
     }
 
     try {
@@ -466,10 +466,10 @@ export async function registerPc(prevState: any, formData: FormData) {
         revalidatePath('/dashboard/pcs');
         revalidatePath('/dashboard/live-status');
 
-        return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
+        return { message: `PC "${pcName}" has been submitted for approval.`, status: "success" };
     } catch (error) {
         console.error('PC Registration Error:', error);
-        return { message: "An error occurred while registering your PC. Please try again.", status: "error", pcIdentifier: null };
+        return { message: "An error occurred while registering your PC. Please try again.", status: "error" };
     }
 }
 
