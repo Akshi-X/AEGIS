@@ -291,19 +291,26 @@ export async function updateStudent(data: unknown) {
         const { id, examId, ...studentData } = validatedFields.data;
         const studentObjectId = new ObjectId(id);
 
-        const updateData: Partial<Student> = {
+        const updateData: Partial<Omit<Student, '_id'>> = {
             ...studentData,
         };
+        
+        const unsetData: any = {};
 
-        if (examId) {
+        if (examId && examId !== 'unassigned') {
             updateData.assignedExamId = new ObjectId(examId);
         } else {
-            updateData.assignedExamId = undefined; // Or null, to unset it
+            unsetData.assignedExamId = "";
+        }
+
+        const updateOperation: any = { $set: updateData };
+        if (Object.keys(unsetData).length > 0) {
+            updateOperation.$unset = unsetData;
         }
 
         await studentsCollection.updateOne(
             { _id: studentObjectId },
-            { $set: updateData, ...( !examId && { $unset: { assignedExamId: "" } } ) }
+            updateOperation
         );
 
         await logAdminAction('Updated Student', { studentName: studentData.name, rollNumber: studentData.rollNumber });
@@ -933,3 +940,5 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
         return [];
     }
 }
+
+    
