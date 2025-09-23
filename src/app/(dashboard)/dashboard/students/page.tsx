@@ -58,7 +58,7 @@ export default function StudentsPage() {
 
     const fetchStudentsAndExams = () => {
         getStudents().then(setStudents);
-        getExams({ status: 'Scheduled' }).then(setScheduledExams);
+        getExams({ status: 'Scheduled' }).then(setScheduledExams as any);
     };
 
     useEffect(() => {

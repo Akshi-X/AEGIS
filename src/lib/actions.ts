@@ -228,10 +228,10 @@ export async function getStudents(): Promise<WithId<Student>[]> {
   try {
     const studentsCollection = await getStudentsCollection();
     const students = await studentsCollection.find({}).toArray();
-    return students.map(student => ({
-        ...student,
-        _id: student._id.toString(),
-    })) as WithId<Student>[];
+    return students.map(student => {
+      const { _id, ...rest } = student;
+      return { _id: _id.toString(), ...rest } as WithId<Student>;
+    });
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -348,7 +348,11 @@ export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 
         const examsCollection = await getExamsCollection();
         const query = filter.status ? { status: filter.status } : {};
         const exams = await examsCollection.find(query).toArray();
-        return exams.map(exam => ({...(exam as any), _id: exam._id.toString(), startTime: new Date(exam.startTime) }));
+        return exams.map(exam => ({
+            ...exam, 
+            _id: exam._id.toString(), 
+            startTime: exam.startTime.toISOString(),
+        })) as unknown as WithId<Exam>[];
     } catch (error) {
         console.error('Error fetching exams:', error);
         return [];
