@@ -515,20 +515,20 @@ export async function getPcStatus(identifier: string) {
             if (student) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
-
-                if (student.assignedExamId) {
-                    const examsCollection = await getExamsCollection();
-                    const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
-                    if (exam) {
-                        pcDetails.exam = {
-                            title: exam.title,
-                            startTime: exam.startTime.toISOString(),
-                            duration: exam.duration,
-                            status: exam.status,
-                        };
-                    }
-                }
             }
+        }
+        
+        if (pc.assignedExamId) {
+             const examsCollection = await getExamsCollection();
+             const exam = await examsCollection.findOne({ _id: new ObjectId(pc.assignedExamId) });
+             if (exam) {
+                 pcDetails.exam = {
+                     title: exam.title,
+                     startTime: exam.startTime.toISOString(),
+                     duration: exam.duration,
+                     status: exam.status,
+                 };
+             }
         }
         
         return { status: pc.status, pcDetails };
@@ -716,35 +716,38 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     const pcsCollection = await getPcsCollection();
     const studentsCollection = await getStudentsCollection();
     
-    // If we're assigning a student
+    let studentToAssign = null;
+    let studentExamId = null;
+
     if (studentId) {
         const studentObjectId = new ObjectId(studentId);
-      // Check if this student is already assigned to another PC
-      const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentId, _id: { $ne: new ObjectId(pcId) } });
-      if (existingAssignment) {
-        return { error: 'This student is already assigned to another PC.' };
-      }
+        
+        const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentId, _id: { $ne: new ObjectId(pcId) } });
+        if (existingAssignment) {
+            return { error: 'This student is already assigned to another PC.' };
+        }
+
+        studentToAssign = await studentsCollection.findOne({_id: studentObjectId});
+        if (studentToAssign && studentToAssign.assignedExamId) {
+            studentExamId = studentToAssign.assignedExamId;
+        }
     }
 
-    const pcToUpdate = await pcsCollection.findOne({_id: new ObjectId(pcId)});
-    const studentToAssign = studentId ? await studentsCollection.findOne({_id: new ObjectId(studentId)}) : null;
-
-    // Update the PC with the new assignment (or null to unassign)
     await pcsCollection.updateOne(
       { _id: new ObjectId(pcId) },
       { $set: { 
           assignedStudentId: studentId,
           assignedStudentName: studentToAssign ? studentToAssign.name : null,
           assignedStudentRollNumber: studentToAssign ? studentToAssign.rollNumber : null,
+          assignedExamId: studentExamId,
       } }
     );
     
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
-    const student = studentId ? await studentsCollection.findOne({ _id: new ObjectId(studentId) }) : null;
 
     await logAdminAction('Assigned Student to PC', {
       pcName: pc?.name,
-      studentName: student ? student.name : 'None'
+      studentName: studentToAssign ? studentToAssign.name : 'None'
     });
 
     revalidatePath('/dashboard/pcs');
@@ -754,13 +757,3 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     return { error: 'Failed to assign student.' };
   }
 }
-
-    
-
-    
-
-    
-
-
-
-    
