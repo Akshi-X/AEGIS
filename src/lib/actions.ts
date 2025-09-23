@@ -461,7 +461,7 @@ function generateRandomString(length: number) {
   return result;
 }
 
-export async function registerPc(prevState: any, formData: FormData) {
+export async function registerPc(prevState: any, formData: FormData): Promise<ActionState> {
     const pcName = formData.get('pcName') as string;
     
     if (!pcName || pcName.trim().length < 3) {
@@ -474,7 +474,7 @@ export async function registerPc(prevState: any, formData: FormData) {
         
         const newPc: Omit<PC, '_id'> = {
             name: pcName,
-            ipAddress: 'N/A',
+            ipAddress: 'N/A', // IP address can be captured later
             status: 'Pending',
             uniqueIdentifier: uniqueIdentifier
         };
@@ -503,9 +503,11 @@ export async function getPcStatus(identifier: string) {
             ...pc, 
             _id: pc._id.toString(),
             assignedStudentId: pc.assignedStudentId?.toString() || null,
-            assignedExamId: pc.assignedExamId?.toString() || null,
         };
         
+        // Use a separate variable for exam ID lookup to avoid conflicts
+        let examIdToLookup: ObjectId | string | undefined = pc.assignedExamId;
+
         if (pc.assignedStudentId) {
             const studentsCollection = await getStudentsCollection();
             const student = await studentsCollection.findOne({ _id: pc.assignedStudentId as ObjectId });
@@ -514,15 +516,16 @@ export async function getPcStatus(identifier: string) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
                 
+                // Student's assigned exam takes precedence
                 if (student.assignedExamId) {
-                    pcDetails.assignedExamId = student.assignedExamId.toString();
+                    examIdToLookup = student.assignedExamId;
                 }
             }
         }
         
-        if (pcDetails.assignedExamId) {
+        if (examIdToLookup) {
             const examsCollection = await getExamsCollection();
-            const exam = await examsCollection.findOne({ _id: new ObjectId(pcDetails.assignedExamId) });
+            const exam = await examsCollection.findOne({ _id: new ObjectId(examIdToLookup) });
             if (exam) {
                 pcDetails.exam = {
                     _id: exam._id.toString(),
@@ -876,3 +879,4 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
     }
 }
 
+    
