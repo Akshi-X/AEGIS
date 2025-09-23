@@ -16,7 +16,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, PlusCircle, Upload } from 'lucide-react';
+import { MoreHorizontal, PlusCircle, Upload, ClipboardList } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -40,6 +40,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
 
 
 const studentSchema = z.object({
@@ -220,6 +221,7 @@ export default function StudentsPage() {
               <TableHead>Name</TableHead>
               <TableHead>Roll Number</TableHead>
               <TableHead>Class / Batch</TableHead>
+              <TableHead>Assigned Exam</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -229,6 +231,16 @@ export default function StudentsPage() {
                 <TableCell className="font-medium">{student.name}</TableCell>
                 <TableCell>{student.rollNumber}</TableCell>
                 <TableCell>{student.classBatch}</TableCell>
+                <TableCell>
+                    {student.examTitle ? (
+                         <Badge variant="secondary" className="flex items-center gap-1.5">
+                            <ClipboardList className="h-3 w-3" />
+                            {student.examTitle}
+                        </Badge>
+                    ) : (
+                        <span className="text-muted-foreground">Not Assigned</span>
+                    )}
+                </TableCell>
                 <TableCell className="text-right">
                    <AlertDialog>
                         <DropdownMenu>

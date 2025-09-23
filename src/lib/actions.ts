@@ -168,17 +168,16 @@ export async function addStudent(data: unknown) {
     const studentsCollection = await getStudentsCollection();
     const { examId, ...studentData } = validatedFields.data;
 
-    const result = await studentsCollection.insertOne(studentData);
-    const newStudentId = result.insertedId;
+    const studentToInsert: Omit<Student, "_id"> = {
+        ...studentData
+    };
 
     if (examId) {
-        const examsCollection = await getExamsCollection();
-        await examsCollection.updateOne(
-            { _id: new ObjectId(examId) },
-            { $addToSet: { assignedStudentIds: newStudentId } }
-        );
+        studentToInsert.assignedExamId = new ObjectId(examId);
     }
-
+    
+    await studentsCollection.insertOne(studentToInsert);
+    
     await logAdminAction('Added Student', { studentName: validatedFields.data.name, rollNumber: validatedFields.data.rollNumber });
     revalidatePath('/dashboard/students');
     revalidatePath('/dashboard');
@@ -227,10 +226,39 @@ async function fetchAndMapDocuments<T extends Document>(collectionName: 'student
 export async function getStudents(): Promise<WithId<Student>[]> {
   try {
     const studentsCollection = await getStudentsCollection();
-    const students = await studentsCollection.find({}).toArray();
+    const students = await studentsCollection.aggregate([
+        {
+            $lookup: {
+                from: 'exams',
+                localField: 'assignedExamId',
+                foreignField: '_id',
+                as: 'assignedExam'
+            }
+        },
+        {
+            $unwind: {
+                path: '$assignedExam',
+                preserveNullAndEmptyArrays: true
+            }
+        },
+        {
+            $addFields: {
+                examTitle: '$assignedExam.title'
+            }
+        },
+        {
+            $project: {
+                assignedExam: 0
+            }
+        }
+    ]).toArray();
     return students.map(student => {
-      const { _id, ...rest } = student;
-      return { _id: _id.toString(), ...rest } as WithId<Student>;
+      const { _id, assignedExamId, ...rest } = student;
+      return {
+        _id: _id.toString(),
+        assignedExamId: assignedExamId ? assignedExamId.toString() : undefined,
+        ...rest 
+      } as WithId<Student>;
     });
   } catch (error) {
     console.error('Error fetching students:', error);
@@ -251,10 +279,6 @@ export async function deleteStudent(studentId: string): Promise<{ success: boole
 
         // Unassign student from any PC
         await pcsCollection.updateMany({ assignedStudentId: studentId }, { $set: { assignedStudentId: null, assignedStudentName: null, assignedStudentRollNumber: null } });
-
-        // Remove student from any exam
-        const examsCollection = await getExamsCollection();
-        await examsCollection.updateMany({}, { $pull: { assignedStudentIds: studentObjectId } });
 
         await studentsCollection.deleteOne({ _id: studentObjectId });
         await logAdminAction('Deleted Student', { studentName: studentToDelete.name, rollNumber: studentToDelete.rollNumber });
@@ -330,7 +354,6 @@ export async function getQuestions(): Promise<WithId<Question>[]> {
         const questionsCollection = await getQuestionsCollection();
         const questions = await questionsCollection.find({}).toArray();
         
-        // This mapping is crucial to handle both `text` and `questionText` fields
         return questions.map(q => ({
             ...(q as any),
             _id: q._id.toString(),

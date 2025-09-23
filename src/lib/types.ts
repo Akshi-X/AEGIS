@@ -7,6 +7,7 @@ export type Student = {
   rollNumber: string;
   classBatch: string;
   assignedExamId?: string | ObjectId;
+  examTitle?: string;
 };
 
 export type PC = {
