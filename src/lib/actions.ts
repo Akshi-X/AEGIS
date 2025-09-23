@@ -4,10 +4,10 @@
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
 import { suggestFullQuestion, SuggestFullQuestionOutput } from '@/ai/flows/suggest-full-question';
 import { z } from 'zod';
-import { getAdminsCollection, getAdminLogsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
+import { getAdminsCollection, getAdminLogsCollection, getExamResultsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
 import { WithId, Document, ObjectId } from 'mongodb';
-import type { Question, Student, PC, Exam, Admin, AdminLog } from './types';
+import type { Question, Student, PC, Exam, Admin, AdminLog, ExamResult } from './types';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
 
@@ -346,26 +346,27 @@ export async function getPcs(): Promise<WithId<PC>[]> {
     ]).sort({ name: 1 }).toArray();
     
     return pcs.map(pc => {
-      const { _id, assignedStudentId, assignedExamId, ...rest } = pc;
-      const plainPc: any = {
-        _id: _id.toString(),
-        ...rest,
-      };
-      if (assignedStudentId) {
-        plainPc.assignedStudentId = assignedStudentId.toString();
-      }
-      if (assignedExamId) {
-        plainPc.assignedExamId = assignedExamId.toString();
-      }
-      return plainPc as WithId<PC>;
-    });
+        const { _id, assignedStudentId, assignedExamId, ...rest } = pc;
+        const plainPc: any = {
+          _id: _id.toString(),
+          ...rest,
+        };
+        if (assignedStudentId) {
+          plainPc.assignedStudentId = assignedStudentId.toString();
+        }
+        if (assignedExamId) {
+          plainPc.assignedExamId = assignedExamId.toString();
+        }
+        return plainPc as WithId<PC>;
+      });
 }
 
 
-export async function getQuestions(): Promise<WithId<Question>[]> {
+export async function getQuestions(questionIds?: ObjectId[]): Promise<WithId<Question>[]> {
     try {
         const questionsCollection = await getQuestionsCollection();
-        const questions = await questionsCollection.find({}).toArray();
+        const query = questionIds ? { _id: { $in: questionIds } } : {};
+        const questions = await questionsCollection.find(query).toArray();
         
         return questions.map(q => ({
             ...(q as any),
@@ -530,20 +531,21 @@ export async function getPcStatus(identifier: string) {
             if (student) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
+                
+                if (student.assignedExamId) {
+                     const examsCollection = await getExamsCollection();
+                     const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
+                     if (exam) {
+                         pcDetails.exam = {
+                             _id: exam._id.toString(),
+                             title: exam.title,
+                             startTime: exam.startTime.toISOString(),
+                             duration: exam.duration,
+                             status: exam.status,
+                         };
+                     }
+                }
             }
-        }
-        
-        if (pc.assignedExamId) {
-             const examsCollection = await getExamsCollection();
-             const exam = await examsCollection.findOne({ _id: pc.assignedExamId });
-             if (exam) {
-                 pcDetails.exam = {
-                     title: exam.title,
-                     startTime: exam.startTime.toISOString(),
-                     duration: exam.duration,
-                     status: exam.status,
-                 };
-             }
         }
         
         return { status: pc.status, pcDetails };
@@ -687,18 +689,27 @@ export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'question
 export async function startExamNow(examId: string) {
     try {
         const examsCollection = await getExamsCollection();
+        const questionsCollection = await getQuestionsCollection();
         const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
 
         if (!exam) return { error: 'Exam not found.' };
 
+        // Get 10 random questions
+        const randomQuestions = await questionsCollection.aggregate([
+            { $sample: { size: 10 } }
+        ]).toArray();
+
+        const questionIds = randomQuestions.map(q => q._id);
+
         await examsCollection.updateOne(
             { _id: new ObjectId(examId) },
-            { $set: { status: 'In Progress', startTime: new Date() } }
+            { $set: { status: 'In Progress', startTime: new Date(), questionIds: questionIds } }
         );
 
         await logAdminAction('Started Exam Manually', { examTitle: exam.title });
         revalidatePath('/dashboard/exams');
         revalidatePath('/dashboard');
+        revalidatePath('/');
         return { success: true };
     } catch (error) {
         console.error('Error starting exam:', error);
@@ -773,4 +784,94 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
   }
 }
 
-    
+
+export async function getExamDetails(examId: string) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+        if (!exam) return null;
+
+        const questions = await getQuestions(exam.questionIds as ObjectId[]);
+        
+        return {
+            exam: { ...exam, _id: exam._id.toString(), startTime: exam.startTime.toISOString(), questionIds: exam.questionIds.map(id => id.toString()) },
+            questions: questions.map(q => ({...q, _id: q._id.toString() }))
+        };
+
+    } catch (error) {
+        console.error('Error fetching exam details:', error);
+        return null;
+    }
+}
+
+export async function submitExam(examId: string, studentId: string, answers: { questionId: string; selectedOption: number | null }[]) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const studentsCollection = await getStudentsCollection();
+        const resultsCollection = await getExamResultsCollection();
+
+        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+        const student = await studentsCollection.findOne({ _id: new ObjectId(studentId) });
+
+        if (!exam || !student) {
+            throw new Error('Exam or student not found.');
+        }
+
+        const questions = await getQuestions(exam.questionIds as ObjectId[]);
+        let score = 0;
+
+        for (const question of questions) {
+            const studentAnswer = answers.find(a => a.questionId === question._id.toString());
+            if (studentAnswer && studentAnswer.selectedOption !== null && question.correctOptions.includes(studentAnswer.selectedOption)) {
+                score += question.weight;
+            } else if (studentAnswer && studentAnswer.selectedOption !== null && question.negativeMarking) {
+                // Assuming negative marking deducts 1 point, can be more complex
+                score -= 1;
+            }
+        }
+        
+        const result: Omit<ExamResult, '_id'> = {
+            studentId: student._id,
+            examId: exam._id,
+            studentName: student.name,
+            examTitle: exam.title,
+            answers,
+            score: Math.max(0, score), // Ensure score is not negative
+            totalQuestions: questions.length,
+            completedAt: new Date(),
+        };
+
+        const insertedResult = await resultsCollection.insertOne(result);
+        
+        await studentsCollection.updateOne({ _id: student._id }, { $set: { examResultId: insertedResult.insertedId }});
+        await examsCollection.updateOne({ _id: exam._id }, { $set: { status: 'Completed' } });
+
+        await logAdminAction('Exam Submitted', { studentName: student.name, examTitle: exam.title, score });
+        revalidatePath('/dashboard/results');
+        
+        return { success: true, resultId: insertedResult.insertedId.toString() };
+    } catch(error) {
+        console.error('Error submitting exam:', error);
+        return { success: false, error: 'Failed to submit exam.' };
+    }
+}
+
+
+export async function getExamResults(): Promise<WithId<ExamResult>[]> {
+    try {
+        const resultsCollection = await getExamResultsCollection();
+        const results = await resultsCollection.find({}).sort({ completedAt: -1 }).toArray();
+
+        return results.map(r => ({
+            ...r,
+            _id: r._id.toString(),
+            studentId: r.studentId.toString(),
+            examId: r.examId.toString(),
+            completedAt: r.completedAt,
+        })) as WithId<ExamResult>[];
+
+    } catch (error) {
+        console.error('Error fetching exam results:', error);
+        return [];
+    }
+}

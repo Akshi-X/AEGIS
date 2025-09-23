@@ -1,4 +1,5 @@
 
+
 import type { ObjectId } from 'mongodb';
 
 export type Student = {
@@ -8,6 +9,7 @@ export type Student = {
   classBatch: string;
   assignedExamId?: string | ObjectId;
   examTitle?: string;
+  examResultId?: string | ObjectId;
 };
 
 export type PC = {
@@ -57,4 +59,16 @@ export type AdminLog = {
     action: string;
     details?: Record<string, any>;
     timestamp: Date;
+}
+
+export type ExamResult = {
+    _id?: string | ObjectId;
+    studentId: string | ObjectId;
+    examId: string | ObjectId;
+    studentName: string;
+    examTitle: string;
+    answers: { questionId: string; selectedOption: number | null }[];
+    score: number;
+    totalQuestions: number;
+    completedAt: Date;
 }

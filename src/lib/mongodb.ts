@@ -57,3 +57,8 @@ export async function getAdminLogsCollection() {
     const db = await getDb();
     return db.collection('admin_logs');
 }
+
+export async function getExamResultsCollection() {
+    const db = await getDb();
+    return db.collection('exam_results');
+}

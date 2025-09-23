@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users, Settings, History } from 'lucide-react';
+import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users, Settings, History, BarChart } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/dashboard/students', icon: Users, label: 'Students' },
   { href: '/dashboard/questions', icon: FileQuestion, label: 'Questions' },
   { href: '/dashboard/exams', icon: ClipboardList, label: 'Exams' },
+  { href: '/dashboard/results', icon: BarChart, label: 'Results' },
   { href: '/dashboard/logs', icon: History, label: 'Logs'},
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
 ];
@@ -46,10 +47,10 @@ export function DashboardNav() {
                 <SidebarMenuButton
                   as="a"
                   variant="default"
-                  isActive={pathname === item.href}
+                  isActive={pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')}
                   className={cn(
                     'text-sidebar-foreground/80 hover:text-sidebar-foreground',
-                    pathname === item.href &&
+                    (pathname.startsWith(item.href) && (item.href !== '/dashboard' || pathname === '/dashboard')) &&
                       'bg-sidebar-primary text-sidebar-primary-foreground hover:bg-sidebar-primary/90 hover:text-sidebar-primary-foreground'
                   )}
                 >

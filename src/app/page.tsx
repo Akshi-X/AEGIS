@@ -1,14 +1,15 @@
 
 'use client';
 
-import { useState, useEffect, useActionState } from 'react';
+import { useState, useEffect, useActionState, useTransition } from 'react';
+import Link from 'next/link';
 import { registerPc, getPcStatus } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle, AlertTriangle, XCircle, User, ClipboardList, Calendar, Clock } from 'lucide-react';
+import { CheckCircle, AlertTriangle, XCircle, User, ClipboardList, Calendar, Clock, Loader2 } from 'lucide-react';
 import { Logo } from '@/components/icons';
 import type { PC } from '@/lib/types';
 import { format } from 'date-fns';
@@ -19,7 +20,7 @@ type ActionState = {
   message: string;
   status: string;
   pcIdentifier: string | null;
-  pcDetails?: PC & { exam?: { title: string; startTime: string; duration: number; status: string } };
+  pcDetails?: PC & { exam?: { _id: string; title: string; startTime: string; duration: number; status: string } };
 };
 
 const initialState: ActionState = {
@@ -35,6 +36,15 @@ export default function Home() {
   const [currentStatus, setCurrentStatus] = useState(state.status);
   const [pcIdentifier, setPcIdentifier] = useState<string | null>(state.pcIdentifier);
   const [pcDetails, setPcDetails] = useState<ActionState['pcDetails'] | undefined>(undefined);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  useEffect(() => {
+    const savedPcIdentifier = localStorage.getItem('pcIdentifier');
+    if (savedPcIdentifier) {
+        setPcIdentifier(savedPcIdentifier);
+        checkStatus(savedPcIdentifier);
+    }
+  }, []);
 
   useEffect(() => {
     if (state.status) {
@@ -42,12 +52,14 @@ export default function Home() {
     }
     if (state.pcIdentifier) {
       setPcIdentifier(state.pcIdentifier);
+      localStorage.setItem('pcIdentifier', state.pcIdentifier);
       // Immediately check status after registration
       checkStatus(state.pcIdentifier);
     }
   }, [state]);
 
   const checkStatus = async (identifier: string) => {
+    setIsCheckingStatus(true);
     const result = await getPcStatus(identifier);
     if (result.status) {
         setCurrentStatus(result.status.toLowerCase());
@@ -55,6 +67,7 @@ export default function Home() {
     if (result.pcDetails) {
         setPcDetails(result.pcDetails);
     }
+    setIsCheckingStatus(false);
     return result.status;
   }
 
@@ -72,6 +85,7 @@ export default function Home() {
   }, [currentStatus, pcIdentifier]);
   
   const handleTryAgain = () => {
+    localStorage.removeItem('pcIdentifier');
     setCurrentStatus('');
     setPcIdentifier(null);
     setPcName(''); 
@@ -132,8 +146,15 @@ export default function Home() {
                             </div>
                         </div>
                     </CardContent>
-                    <CardFooter>
-                         <p className="text-center text-xs text-muted-foreground w-full">Please wait for the exam to begin.</p>
+                    <CardFooter className="flex-col gap-2">
+                         {pcDetails.exam?.status === 'In Progress' ? (
+                            <Link href={`/exam/${pcDetails.exam._id}`} className="w-full">
+                                <Button className="w-full">Start Exam</Button>
+                            </Link>
+                         ) : (
+                            <p className="text-center text-xs text-muted-foreground w-full">Please wait for the exam to begin.</p>
+                         )}
+                         <Button variant="link" size="sm" onClick={handleTryAgain} className="text-muted-foreground">Register a different PC</Button>
                     </CardFooter>
                 </Card>
             </div>
@@ -159,7 +180,7 @@ export default function Home() {
             <CardContent>
               {currentStatus === 'pending' && (
                 <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800 mb-4">
-                    <CheckCircle className="h-4 w-4 text-blue-600" />
+                    <Loader2 className="h-4 w-4 text-blue-600 animate-spin" />
                     <AlertTitle>Registration Pending</AlertTitle>
                     <AlertDescription>
                         Your PC registration request has been submitted. An administrator will review your request shortly.
@@ -177,7 +198,7 @@ export default function Home() {
               )}
               {(currentStatus === 'approved' && !pcDetails?.assignedStudentId) && (
                   <Alert variant="default" className="bg-green-50 border border-green-200 text-green-800 mb-4">
-                      <CheckCircle className="h-4 w-4 text-green-600" />
+                      <Loader2 className="h-4 w-4 text-green-600 animate-spin" />
                       <AlertTitle>Registration Approved!</AlertTitle>
                       <AlertDescription>
                           Your PC has been approved. Waiting for an admin to assign a student.
@@ -202,14 +223,15 @@ export default function Home() {
                   required
                   value={pcName}
                   onChange={(e) => setPcName(e.target.value)}
-                  disabled={!!currentStatus && currentStatus !== 'rejected'}
+                  disabled={!!pcIdentifier && currentStatus !== 'rejected'}
                 />
               </div>
             </CardContent>
             <CardFooter>
              {currentStatus !== 'rejected' ? (
-                <Button type="submit" className="w-full" disabled={!pcName || (!!currentStatus && currentStatus !== 'rejected')}>
-                    {currentStatus === 'pending' || currentStatus === 'approved' ? 'Request Submitted' : 'Request Access'}
+                <Button type="submit" className="w-full" disabled={!pcName || (!!pcIdentifier && currentStatus !== 'rejected')}>
+                    {isCheckingStatus || (pcIdentifier && currentStatus !== 'rejected') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {pcIdentifier && currentStatus !== 'rejected' ? 'Request Submitted' : 'Request Access'}
                 </Button>
              ) : (
                 <Button type="button" className="w-full" onClick={handleTryAgain}>
