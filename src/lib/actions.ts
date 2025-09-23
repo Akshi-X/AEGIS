@@ -345,10 +345,20 @@ export async function getPcs(): Promise<WithId<PC>[]> {
         }
     ]).sort({ name: 1 }).toArray();
     
-    return pcs.map(pc => ({
-        ...(pc as WithId<PC>),
-        _id: pc._id.toString(),
-    }));
+    return pcs.map(pc => {
+      const { _id, assignedStudentId, assignedExamId, ...rest } = pc;
+      const plainPc: any = {
+        _id: _id.toString(),
+        ...rest,
+      };
+      if (assignedStudentId) {
+        plainPc.assignedStudentId = assignedStudentId.toString();
+      }
+      if (assignedExamId) {
+        plainPc.assignedExamId = assignedExamId.toString();
+      }
+      return plainPc as WithId<PC>;
+    });
 }
 
 
