@@ -75,7 +75,7 @@ export default function Home() {
     if (currentStatus && (currentStatus === 'pending' || currentStatus === 'approved') && pcIdentifier) {
       const interval = setInterval(async () => {
         const newStatus = await checkStatus(pcIdentifier);
-        if (newStatus && newStatus.toLowerCase() !== 'pending' && newStatus.toLowerCase() !== 'approved') {
+        if (newStatus && typeof newStatus === 'string' && newStatus.toLowerCase() !== 'pending' && newStatus.toLowerCase() !== 'approved') {
           clearInterval(interval);
         }
       }, 5000); // Poll every 5 seconds
