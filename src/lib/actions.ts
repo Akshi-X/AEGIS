@@ -2,8 +2,6 @@
 
 'use server';
 
-import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
-import { suggestFullQuestion, SuggestFullQuestionOutput } from '@/ai/flows/suggest-full-question';
 import { z } from 'zod';
 import { getAdminsCollection, getAdminLogsCollection, getExamResultsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
@@ -24,25 +22,6 @@ const questionSchema = z.object({
   negativeMarking: z.boolean(),
 });
 
-type FormState = {
-    message: string;
-    suggestions?: {
-        tags: string[];
-        difficulty: 'Easy' | 'Medium' | 'Hard';
-    };
-    errors?: {
-        questionText?: string[];
-    };
-}
-
-type FullQuestionSuggestionState = {
-    message: string;
-    suggestion?: SuggestFullQuestionOutput;
-    errors?: {
-        topic?: string[];
-    };
-}
-
 
 async function logAdminAction(action: string, details: Record<string, any> = {}) {
     try {
@@ -61,62 +40,6 @@ async function logAdminAction(action: string, details: Record<string, any> = {})
         console.error('Failed to log admin action:', error);
     }
 }
-
-
-export async function getAiSuggestions(input: {questionText: string}): Promise<FormState> {
-  const validatedFields = z.object({ questionText: z.string() }).safeParse(input);
-
-  if (!validatedFields.success) {
-    return {
-      message: 'Invalid question text.',
-      errors: validatedFields.error.flatten().fieldErrors,
-    };
-  }
-
-  if (validatedFields.data.questionText.length < 10) {
-      return {
-          message: 'Question text must be at least 10 characters.'
-      }
-  }
-
-  try {
-    const result = await suggestQuestionTags({ questionText: validatedFields.data.questionText });
-    return {
-      message: 'success',
-      suggestions: result,
-    };
-  } catch (error) {
-    console.error(error);
-    return {
-      message: 'Failed to get AI suggestions. Please try again later.',
-    };
-  }
-}
-
-export async function getAiFullQuestionSuggestion(input: { topic: string }): Promise<FullQuestionSuggestionState> {
-    const validatedFields = z.object({ topic: z.string().min(3, "Topic must be at least 3 characters.") }).safeParse(input);
-
-    if (!validatedFields.success) {
-        return {
-            message: 'Invalid topic.',
-            errors: validatedFields.error.flatten().fieldErrors,
-        };
-    }
-
-    try {
-        const result = await suggestFullQuestion({ topic: validatedFields.data.topic });
-        return {
-            message: 'success',
-            suggestion: result,
-        };
-    } catch (error) {
-        console.error(error);
-        return {
-            message: 'Failed to get AI suggestion. Please try again later.',
-        };
-    }
-}
-
 
 export async function saveQuestion(data: unknown) {
     const validatedFields = questionSchema.safeParse(data);

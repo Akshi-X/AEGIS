@@ -1,13 +1,13 @@
 
 'use client';
 
-import { useState, useActionState, useTransition } from 'react';
+import { useState } from 'react';
 import { useFieldArray, useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Wand2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
-import { getAiSuggestions, saveQuestion, getAiFullQuestionSuggestion } from '@/lib/actions';
+import { saveQuestion } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -35,9 +35,6 @@ export function QuestionForm() {
   const { toast } = useToast();
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
-  const [isSuggesting, setIsSuggesting] = useState(false);
-  const [isSuggestingFullQuestion, setIsSuggestingFullQuestion] = useState(false);
-  const [suggestionTopic, setSuggestionTopic] = useState('');
 
   const form = useForm<QuestionFormValues>({
     resolver: zodResolver(questionFormSchema),
@@ -52,68 +49,11 @@ export function QuestionForm() {
     },
   });
 
-  const { fields, append, remove, replace } = useFieldArray({
+  const { fields, append, remove } = useFieldArray({
     control: form.control,
     name: "options",
   });
   
-  const handleAiSuggest = async () => {
-    const questionText = form.getValues('questionText');
-    if(questionText.length < 10) {
-        toast({ title: 'Error', description: 'Question text must be at least 10 characters.', variant: 'destructive' });
-        return;
-    }
-
-    setIsSuggesting(true);
-    try {
-        const result = await getAiSuggestions({ questionText });
-        if (result.suggestions) {
-            form.setValue('category', result.suggestions.difficulty);
-            setTags(result.suggestions.tags);
-            form.setValue('tags', result.suggestions.tags);
-            toast({ title: 'AI Suggestions Applied', description: 'Difficulty and tags have been populated.' });
-        } else if (result.message) {
-            toast({ title: 'Error', description: result.message, variant: 'destructive' });
-        }
-    } catch (error) {
-         toast({ title: 'Error', description: 'Failed to get AI suggestions. Please try again later.', variant: 'destructive' });
-    } finally {
-        setIsSuggesting(false);
-    }
-  }
-
-  const handleSuggestFullQuestion = async () => {
-    if (!suggestionTopic) {
-      toast({ title: 'Error', description: 'Please enter a topic to get suggestions.', variant: 'destructive' });
-      return;
-    }
-    setIsSuggestingFullQuestion(true);
-    try {
-      const result = await getAiFullQuestionSuggestion({ topic: suggestionTopic });
-      if (result.suggestion) {
-        const { questionText, options, correctOptions, difficulty } = result.suggestion;
-        
-        // Use setValue for more reliable state updates with react-hook-form
-        form.setValue('questionText', questionText);
-        replace(options); // replace the entire options array
-        form.setValue('correctOptions', correctOptions);
-        form.setValue('category', difficulty);
-        form.setValue('tags', [suggestionTopic]);
-        form.setValue('weight', 1);
-        form.setValue('negativeMarking', false);
-
-        setTags([suggestionTopic]);
-        toast({ title: 'AI Question Generated', description: 'The form has been populated with the suggested question.' });
-      } else {
-        toast({ title: 'Error', description: result.message || 'Failed to generate question.', variant: 'destructive' });
-      }
-    } catch (error) {
-      toast({ title: 'Error', description: 'An unexpected error occurred.', variant: 'destructive' });
-    } finally {
-      setIsSuggestingFullQuestion(false);
-    }
-  }
-
   const addTag = () => {
     if (newTag && !tags.includes(newTag)) {
       const newTags = [...tags, newTag];
@@ -152,25 +92,6 @@ export function QuestionForm() {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-8">
-             <Card>
-                <CardHeader>
-                    <CardTitle>Generate with AI</CardTitle>
-                    <CardDescription>Enter a topic to generate a full question with options and answers.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <div className="flex gap-2">
-                        <Input 
-                            value={suggestionTopic}
-                            onChange={(e) => setSuggestionTopic(e.target.value)}
-                            placeholder="e.g., 'Quantum Physics' or 'React Hooks'"
-                        />
-                        <Button type="button" onClick={handleSuggestFullQuestion} disabled={isSuggestingFullQuestion}>
-                            {isSuggestingFullQuestion ? 'Generating...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest Full Question</>}
-                        </Button>
-                    </div>
-                </CardContent>
-            </Card>
-
             <Card>
               <CardHeader>
                 <CardTitle>Question Details</CardTitle>
@@ -191,11 +112,6 @@ export function QuestionForm() {
                   )}
                 />
               </CardContent>
-              <CardFooter>
-                 <Button type="button" onClick={handleAiSuggest} disabled={isSuggesting}>
-                    {isSuggesting ? 'Thinking...' : <><Wand2 className="mr-2 h-4 w-4" /> Suggest Tags & Difficulty</>}
-                </Button>
-              </CardFooter>
             </Card>
 
             <Card>
