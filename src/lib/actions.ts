@@ -1,5 +1,4 @@
 
-
 'use server';
 
 import { z } from 'zod';
@@ -452,6 +451,13 @@ export async function registerPc(prevState: any, formData: FormData) {
 
     try {
         const pcsCollection = await getPcsCollection();
+
+        // Check for existing PC with the same name
+        const existingPc = await pcsCollection.findOne({ name: pcName });
+        if (existingPc) {
+            return { message: `A PC with the name "${pcName}" is already registered.`, status: "error", pcIdentifier: null };
+        }
+
         const uniqueIdentifier = `pc-id-${generateRandomString(8)}`;
         
         const newPc: Omit<PC, '_id'> = {
@@ -1063,3 +1069,5 @@ export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
         return [];
     }
 }
+
+    
