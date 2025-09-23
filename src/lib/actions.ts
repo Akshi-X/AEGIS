@@ -506,9 +506,14 @@ export async function getPcStatus(identifier: string) {
             return { status: null, pcDetails: null };
         }
 
-        let pcDetails: any = { ...pc, _id: pc._id.toString() };
-
-        if (pc.assignedStudentId && typeof pc.assignedStudentId === 'string') {
+        let pcDetails: any = { 
+            ...pc, 
+            _id: pc._id.toString(),
+            assignedStudentId: pc.assignedStudentId?.toString() || null,
+            assignedExamId: pc.assignedExamId?.toString() || null,
+        };
+        
+        if (pc.assignedStudentId) {
             const studentsCollection = await getStudentsCollection();
             const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
             
@@ -520,7 +525,7 @@ export async function getPcStatus(identifier: string) {
         
         if (pc.assignedExamId) {
              const examsCollection = await getExamsCollection();
-             const exam = await examsCollection.findOne({ _id: new ObjectId(pc.assignedExamId) });
+             const exam = await examsCollection.findOne({ _id: pc.assignedExamId });
              if (exam) {
                  pcDetails.exam = {
                      title: exam.title,
@@ -717,7 +722,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     const studentsCollection = await getStudentsCollection();
     
     let studentToAssign = null;
-    let studentExamId = null;
+    let studentExamId: ObjectId | null = null;
 
     if (studentId) {
         const studentObjectId = new ObjectId(studentId);
@@ -729,7 +734,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
 
         studentToAssign = await studentsCollection.findOne({_id: studentObjectId});
         if (studentToAssign && studentToAssign.assignedExamId) {
-            studentExamId = studentToAssign.assignedExamId;
+            studentExamId = studentToAssign.assignedExamId as ObjectId;
         }
     }
 
@@ -757,3 +762,5 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     return { error: 'Failed to assign student.' };
   }
 }
+
+    
