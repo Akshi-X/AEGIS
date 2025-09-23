@@ -451,14 +451,6 @@ export async function registerPc(prevState: any, formData: FormData) {
 
     try {
         const pcsCollection = await getPcsCollection();
-
-        // Check for existing PC with the same name - this is a simple check.
-        // A more robust system might use a unique hardware ID.
-        const existingPc = await pcsCollection.findOne({ name: pcName });
-        if (existingPc) {
-            return { message: `A PC with the name "${pcName}" is already registered. Please use a different name.`, status: "error", pcIdentifier: null };
-        }
-
         const uniqueIdentifier = `pc-id-${generateRandomString(8)}`;
         
         const newPc: Omit<PC, '_id'> = {
