@@ -281,7 +281,7 @@ export async function deleteStudent(studentId: string): Promise<{ success: boole
         }
 
         // Unassign student from any PC
-        await pcsCollection.updateMany({ assignedStudentId: studentId }, { $set: { assignedStudentId: null, assignedStudentName: null, assignedStudentRollNumber: null } });
+        await pcsCollection.updateMany({ assignedStudentId: studentObjectId }, { $set: { assignedStudentId: null, assignedStudentName: null, assignedStudentRollNumber: null } });
 
         await studentsCollection.deleteOne({ _id: studentObjectId });
         await logAdminAction('Deleted Student', { studentName: studentToDelete.name, rollNumber: studentToDelete.rollNumber });
@@ -461,7 +461,7 @@ function generateRandomString(length: number) {
   return result;
 }
 
-export async function registerPc(prevState: any, formData: FormData): Promise<ActionState> {
+export async function registerPc(prevState: any, formData: FormData) {
     const pcName = formData.get('pcName') as string;
     
     if (!pcName || pcName.trim().length < 3) {
@@ -505,8 +505,7 @@ export async function getPcStatus(identifier: string) {
             assignedStudentId: pc.assignedStudentId?.toString() || null,
         };
         
-        // Use a separate variable for exam ID lookup to avoid conflicts
-        let examIdToLookup: ObjectId | string | undefined = pc.assignedExamId;
+        let examIdToLookup: ObjectId | string | undefined;
 
         if (pc.assignedStudentId) {
             const studentsCollection = await getStudentsCollection();
@@ -515,14 +514,16 @@ export async function getPcStatus(identifier: string) {
             if (student) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
-                
-                // Student's assigned exam takes precedence
                 if (student.assignedExamId) {
                     examIdToLookup = student.assignedExamId;
                 }
             }
         }
         
+        if (!examIdToLookup && pc.assignedExamId) {
+            examIdToLookup = pc.assignedExamId;
+        }
+
         if (examIdToLookup) {
             const examsCollection = await getExamsCollection();
             const exam = await examsCollection.findOne({ _id: new ObjectId(examIdToLookup) });
@@ -730,14 +731,16 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
   try {
     const pcsCollection = await getPcsCollection();
     const studentsCollection = await getStudentsCollection();
+    const pcObjectId = new ObjectId(pcId);
     
     let studentToAssign = null;
     let studentExamId: ObjectId | null = null;
+    let studentObjectId: ObjectId | null = null;
 
     if (studentId) {
-        const studentObjectId = new ObjectId(studentId);
+        studentObjectId = new ObjectId(studentId);
         
-        const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentObjectId, _id: { $ne: new ObjectId(pcId) } });
+        const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentObjectId, _id: { $ne: pcObjectId } });
         if (existingAssignment) {
             return { error: 'This student is already assigned to another PC.' };
         }
@@ -749,16 +752,14 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     }
 
     await pcsCollection.updateOne(
-      { _id: new ObjectId(pcId) },
+      { _id: pcObjectId },
       { $set: { 
-          assignedStudentId: studentToAssign ? studentToAssign._id : null,
-          assignedStudentName: studentToAssign ? studentToAssign.name : null,
-          assignedStudentRollNumber: studentToAssign ? studentToAssign.rollNumber : null,
+          assignedStudentId: studentObjectId,
           assignedExamId: studentExamId,
       } }
     );
     
-    const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
+    const pc = await pcsCollection.findOne({ _id: pcObjectId });
 
     await logAdminAction('Assigned Student to PC', {
       pcName: pc?.name,
@@ -779,7 +780,9 @@ export async function getExamDetails(examId: string) {
     try {
         const examsCollection = await getExamsCollection();
         const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
-        if (!exam) return null;
+        if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
+            return null;
+        }
 
         const questions = await getQuestions(exam.questionIds as ObjectId[]);
         
@@ -847,7 +850,8 @@ export async function submitExam(examId: string, studentId: string, answers: { q
         const insertedResult = await resultsCollection.insertOne(result);
         
         await studentsCollection.updateOne({ _id: student._id }, { $set: { examResultId: insertedResult.insertedId }});
-        await examsCollection.updateOne({ _id: exam._id }, { $set: { status: 'Completed' } });
+        // Do not mark exam as completed here, as other students might be taking it.
+        // This should be handled by a separate process that checks if all assigned students have finished.
 
         await logAdminAction('Exam Submitted', { studentName: student.name, examTitle: exam.title, score });
         revalidatePath('/dashboard/results');

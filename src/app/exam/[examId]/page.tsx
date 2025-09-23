@@ -16,8 +16,6 @@ import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
 
-// Define the Exam type locally as it might be slightly different from the server-side one
-// especially with dates being strings.
 type ClientExam = {
   _id: string;
   title: string;
@@ -42,27 +40,6 @@ export default function ExamPage() {
     const { toast } = useToast();
     const examId = params.examId as string;
 
-    useEffect(() => {
-        if (!examId) return;
-
-        getExamDetails(examId).then(data => {
-            if (data && data.exam) {
-                setExam(data.exam as ClientExam);
-                setQuestions(data.questions);
-                setAnswers(data.questions.map(q => ({ questionId: q._id as string, selectedOption: null })));
-                
-                const examEndTime = new Date(data.exam.startTime).getTime() + data.exam.duration * 60 * 1000;
-                const now = new Date().getTime();
-                const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
-                setTimeLeft(remainingTime);
-            }
-            setIsLoading(false);
-        }).catch(() => {
-            setIsLoading(false);
-            toast({ title: 'Error', description: 'Could not load exam details.', variant: 'destructive' });
-        });
-    }, [examId, toast]);
-    
     const handleExamSubmit = useCallback(async () => {
         if (isSubmitting) return;
 
@@ -92,6 +69,30 @@ export default function ExamPage() {
     }, [examId, answers, router, toast, isSubmitting]);
 
     useEffect(() => {
+        if (!examId) {
+            setIsLoading(false);
+            return;
+        }
+
+        getExamDetails(examId).then(data => {
+            if (data && data.exam && data.questions.length > 0) {
+                setExam(data.exam as ClientExam);
+                setQuestions(data.questions);
+                setAnswers(data.questions.map(q => ({ questionId: q._id as string, selectedOption: null })));
+                
+                const examEndTime = new Date(data.exam.startTime).getTime() + data.exam.duration * 60 * 1000;
+                const now = new Date().getTime();
+                const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
+                setTimeLeft(remainingTime);
+            }
+            setIsLoading(false);
+        }).catch(() => {
+            setIsLoading(false);
+            toast({ title: 'Error', description: 'Could not load exam details.', variant: 'destructive' });
+        });
+    }, [examId, toast]);
+
+    useEffect(() => {
         if (timeLeft === null || isLoading) return;
 
         if (timeLeft > 0) {
@@ -100,9 +101,11 @@ export default function ExamPage() {
             }, 1000);
             return () => clearInterval(timer);
         } else if (timeLeft === 0) {
-            setShowTimeoutDialog(true);
+             if (!showTimeoutDialog && !isSubmitting) {
+                setShowTimeoutDialog(true);
+            }
         }
-    }, [timeLeft, isLoading]);
+    }, [timeLeft, isLoading, showTimeoutDialog, isSubmitting]);
 
     const handleAnswerChange = (questionId: string, optionIndex: number) => {
         setAnswers(prev => prev.map(a => a.questionId === questionId ? { ...a, selectedOption: optionIndex } : a));
@@ -131,14 +134,15 @@ export default function ExamPage() {
     
     if (!exam || questions.length === 0) {
         return (
-            <div className="flex h-screen items-center justify-center">
-                <Card>
+            <div className="flex h-screen items-center justify-center p-4 text-center">
+                <Card className="max-w-md">
                     <CardHeader>
-                        <CardTitle>Error</CardTitle>
+                        <CardTitle>Exam Not Ready</CardTitle>
+                        <CardDescription>We couldn't load the exam details.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <p>Could not load exam details. The exam might not have started or there are no questions.</p>
-                         <Button onClick={() => router.push('/')} className="mt-4">Go to Portal</Button>
+                        <p>This could be because the exam hasn't started yet, or no questions have been assigned by the administrator. Please wait or contact an admin if you believe this is an error.</p>
+                         <Button onClick={() => router.push('/')} className="mt-4">Go Back to Portal</Button>
                     </CardContent>
                 </Card>
             </div>
@@ -149,7 +153,8 @@ export default function ExamPage() {
     const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
     const minutes = Math.floor((timeLeft || 0) / 60);
     const seconds = (timeLeft || 0) % 60;
-    const currentAnswer = answers.find(a => a.questionId === currentQuestion._id)?.selectedOption;
+    const currentAnswer = answers.find(a => a.questionId === currentQuestion._id.toString())?.selectedOption;
+
 
     return (
         <main className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4 sm:p-8">
@@ -162,7 +167,7 @@ export default function ExamPage() {
                         </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
-                        <AlertDialogAction onClick={handleExamSubmit}>
+                        <AlertDialogAction onClick={handleExamSubmit} disabled={isSubmitting}>
                            {isSubmitting ? 'Submitting...' : 'Submit Now'}
                         </AlertDialogAction>
                     </AlertDialogFooter>
@@ -172,7 +177,8 @@ export default function ExamPage() {
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-xl font-bold">{exam.title}</h1>
                     <div className="text-lg font-mono bg-card px-4 py-2 rounded-md shadow-sm">
-                        {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')}
+                        {String(minutes).padStart(2, '0')}:{String(seconds).padStart(2, '0')
+                    }
                     </div>
                 </div>
                 <Progress value={progress} className="mb-6" />
@@ -215,3 +221,4 @@ export default function ExamPage() {
     );
 }
 
+    
