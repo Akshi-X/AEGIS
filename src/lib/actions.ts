@@ -254,11 +254,14 @@ export async function getStudents(): Promise<WithId<Student>[]> {
     ]).toArray();
     return students.map(student => {
       const { _id, assignedExamId, ...rest } = student;
-      return {
+      const plainStudent: any = {
         _id: _id.toString(),
-        assignedExamId: assignedExamId ? assignedExamId.toString() : undefined,
-        ...rest 
-      } as WithId<Student>;
+        ...rest,
+      };
+      if (assignedExamId) {
+        plainStudent.assignedExamId = assignedExamId.toString();
+      }
+      return plainStudent as WithId<Student>;
     });
   } catch (error) {
     console.error('Error fetching students:', error);
@@ -483,7 +486,7 @@ export async function registerPc(prevState: any, formData: FormData) {
             uniqueIdentifier: uniqueIdentifier
         };
 
-        const result = await pcsCollection.insertOne(newPc);
+        await pcsCollection.insertOne(newPc);
         revalidatePath('/dashboard/pcs');
 
         return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
@@ -499,13 +502,40 @@ export async function getPcStatus(identifier: string) {
         const pcsCollection = await getPcsCollection();
         const pc = await pcsCollection.findOne({ uniqueIdentifier: identifier });
 
-        if (pc) {
-            return { status: pc.status };
+        if (!pc) {
+            return { status: null, pcDetails: null };
         }
-        return { status: null };
+
+        let pcDetails: any = { ...pc, _id: pc._id.toString() };
+
+        if (pc.assignedStudentId) {
+            const studentsCollection = await getStudentsCollection();
+            const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId as string) });
+            
+            if (student) {
+                pcDetails.assignedStudentName = student.name;
+                pcDetails.assignedStudentRollNumber = student.rollNumber;
+
+                if (student.assignedExamId) {
+                    const examsCollection = await getExamsCollection();
+                    const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
+                    if (exam) {
+                        pcDetails.exam = {
+                            title: exam.title,
+                            startTime: exam.startTime.toISOString(),
+                            duration: exam.duration,
+                            status: exam.status,
+                        };
+                    }
+                }
+            }
+        }
+        
+        return { status: pc.status, pcDetails };
+
     } catch (error) {
         console.error('Error fetching PC status:', error);
-        return { status: null };
+        return { status: null, pcDetails: null };
     }
 }
 
@@ -730,3 +760,4 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     
 
     
+
