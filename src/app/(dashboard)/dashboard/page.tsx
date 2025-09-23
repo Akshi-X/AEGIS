@@ -85,7 +85,7 @@ export default async function DashboardPage() {
                     <TableRow>
                         <TableHead>Exam Title</TableHead>
                         <TableHead>Start Time</TableHead>
-                        <TableHead>Duration</TableHead>
+                        <TableHead>Questions</TableHead>
                     </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -93,7 +93,7 @@ export default async function DashboardPage() {
                         <TableRow key={exam._id as string}>
                             <TableCell className="font-medium">{exam.title}</TableCell>
                             <TableCell>{format(new Date(exam.startTime), 'MMM d, yyyy, h:mm a')}</TableCell>
-                            <TableCell>{exam.duration} mins</TableCell>
+                            <TableCell>{exam.numberOfQuestions}</TableCell>
                         </TableRow>
                     ))}
                 </TableBody>
@@ -113,3 +113,5 @@ export default async function DashboardPage() {
     </div>
   );
 }
+
+    

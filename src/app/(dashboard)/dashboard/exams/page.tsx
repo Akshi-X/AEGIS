@@ -2,20 +2,19 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { getExams, scheduleExam, startExamNow, deleteExam } from '@/lib/actions';
+import { getExams, scheduleExam, startExamNow, deleteExam, updateExam, endExam } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
-import { PlusCircle, Calendar as CalendarIcon, Clock, MoreHorizontal } from 'lucide-react';
+import { PlusCircle, Calendar as CalendarIcon, Clock, MoreHorizontal, Edit, Ban } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import { Calendar } from '@/components/ui/calendar';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import type { Exam } from '@/lib/types';
 import type { WithId } from 'mongodb';
@@ -26,15 +25,26 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 export default function ExamsPage() {
   const [exams, setExams] = useState<WithId<Exam>[]>([]);
   const [open, setOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [examToEdit, setExamToEdit] = useState<WithId<Exam> | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
+  // Add state for new exam form
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState<Date | undefined>(new Date());
   const [time, setTime] = useState(format(new Date(), 'HH:mm'));
   const [duration, setDuration] = useState('');
-  const [questionMode, setQuestionMode] = useState('');
+  const [numberOfQuestions, setNumberOfQuestions] = useState('');
+
+  // Add state for edit exam form
+  const [editTitle, setEditTitle] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editDate, setEditDate] = useState<Date | undefined>();
+  const [editTime, setEditTime] = useState('');
+  const [editDuration, setEditDuration] = useState('');
+  const [editNumberOfQuestions, setEditNumberOfQuestions] = useState('');
   
   const { toast } = useToast();
 
@@ -53,7 +63,7 @@ export default function ExamsPage() {
     setDate(new Date());
     setTime(format(new Date(), 'HH:mm'));
     setDuration('');
-    setQuestionMode('');
+    setNumberOfQuestions('');
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -75,6 +85,7 @@ export default function ExamsPage() {
         description,
         startTime,
         duration: Number(duration),
+        numberOfQuestions: Number(numberOfQuestions)
     };
 
     const result = await scheduleExam(examData);
@@ -90,6 +101,53 @@ export default function ExamsPage() {
     setIsSubmitting(false);
   }
 
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    if (!examToEdit || !editDate) {
+        toast({ title: "Error", description: "Invalid exam data.", variant: "destructive"});
+        setIsSubmitting(false);
+        return;
+    }
+    
+    const [hours, minutes] = editTime.split(':').map(Number);
+    const startTime = new Date(editDate);
+    startTime.setHours(hours, minutes);
+
+    const examData = {
+        id: examToEdit._id.toString(),
+        title: editTitle,
+        description: editDescription,
+        startTime,
+        duration: Number(editDuration),
+        numberOfQuestions: Number(editNumberOfQuestions),
+    };
+
+    const result = await updateExam(examData);
+
+    if (result.success) {
+        toast({ title: 'Success', description: 'Exam updated successfully.' });
+        fetchExams();
+        setEditOpen(false);
+    } else {
+        toast({ title: 'Error', description: result.error || 'Failed to update exam.', variant: 'destructive' });
+    }
+    setIsSubmitting(false);
+  }
+
+  const handleOpenEditDialog = (exam: WithId<Exam>) => {
+    setExamToEdit(exam);
+    const examDate = new Date(exam.startTime);
+    setEditTitle(exam.title);
+    setEditDescription(exam.description);
+    setEditDate(examDate);
+    setEditTime(format(examDate, 'HH:mm'));
+    setEditDuration(exam.duration.toString());
+    setEditNumberOfQuestions(exam.numberOfQuestions.toString());
+    setEditOpen(true);
+  }
+
   const handleStartNow = (examId: string) => {
     startTransition(async () => {
         const result = await startExamNow(examId);
@@ -101,6 +159,18 @@ export default function ExamsPage() {
         }
     });
   }
+
+    const handleEndNow = (examId: string) => {
+        startTransition(async () => {
+            const result = await endExam(examId);
+            if (result.success) {
+                toast({ title: 'Success', description: 'Exam has been ended.' });
+                fetchExams();
+            } else {
+                toast({ title: 'Error', description: result.error || 'Failed to end exam.', variant: 'destructive' });
+            }
+        });
+    }
 
   const handleDelete = (examId: string) => {
     startTransition(async () => {
@@ -174,17 +244,9 @@ export default function ExamsPage() {
                                 <Label htmlFor="duration" className="text-right">Duration (mins)</Label>
                                 <Input id="duration" type="number" value={duration} onChange={(e) => setDuration(e.target.value)} className="col-span-3" required />
                             </div>
-                            <div className="grid grid-cols-4 items-center gap-4">
-                                <Label htmlFor="questions" className="text-right">Questions</Label>
-                                <Select value={questionMode} onValueChange={setQuestionMode}>
-                                    <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select question mode" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                    <SelectItem value="auto">Auto-select (e.g. 10 Easy, 5 Medium)</SelectItem>
-                                    <SelectItem value="manual" disabled>Manual selection (coming soon)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                             <div className="grid grid-cols-4 items-center gap-4">
+                                <Label htmlFor="numberOfQuestions" className="text-right">No. of Questions</Label>
+                                <Input id="numberOfQuestions" type="number" value={numberOfQuestions} onChange={(e) => setNumberOfQuestions(e.target.value)} className="col-span-3" required />
                             </div>
                         </div>
                         <DialogFooter>
@@ -224,6 +286,10 @@ export default function ExamsPage() {
                            <Clock className="h-4 w-4 text-muted-foreground" />
                            <span>{exam.duration} minutes</span>
                         </div>
+                         <div className="flex items-center gap-2">
+                            <FileQuestion className="h-4 w-4 text-muted-foreground" />
+                            <span>{exam.numberOfQuestions} questions</span>
+                        </div>
                     </CardContent>
                     <div className="flex items-center p-6 pt-2">
                          <AlertDialog>
@@ -237,6 +303,12 @@ export default function ExamsPage() {
                                 <DropdownMenuContent align="end">
                                      {exam.status === 'Scheduled' && (
                                         <DropdownMenuItem onClick={() => handleStartNow(exam._id.toString())}>Start Now</DropdownMenuItem>
+                                     )}
+                                     {exam.status === 'In Progress' && (
+                                        <DropdownMenuItem onClick={() => handleEndNow(exam._id.toString())}><Ban className="mr-2 h-4 w-4" />End Exam</DropdownMenuItem>
+                                     )}
+                                     {exam.status !== 'Completed' && (
+                                        <DropdownMenuItem onClick={() => handleOpenEditDialog(exam)}><Edit className="mr-2 h-4 w-4" />Edit</DropdownMenuItem>
                                      )}
                                     <AlertDialogTrigger asChild>
                                         <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
@@ -262,6 +334,68 @@ export default function ExamsPage() {
                 </Card>
             ))}
         </div>
+        <Dialog open={editOpen} onOpenChange={setEditOpen}>
+            <DialogContent className="sm:max-w-[625px]">
+                <form onSubmit={handleEditSubmit}>
+                    <DialogHeader>
+                        <DialogTitle>Edit Exam</DialogTitle>
+                        <DialogDescription>
+                            Update the details for the exam.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-title" className="text-right">Title</Label>
+                            <Input id="edit-title" value={editTitle} onChange={(e) => setEditTitle(e.target.value)} className="col-span-3" required />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-description" className="text-right">Description</Label>
+                            <Textarea id="edit-description" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} className="col-span-3" required/>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-startTime" className="text-right">Start Time</Label>
+                            <Popover>
+                                <PopoverTrigger asChild>
+                                <Button
+                                    variant={"outline"}
+                                    className={cn(
+                                    "col-span-3 justify-start text-left font-normal",
+                                    !editDate && "text-muted-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="mr-2 h-4 w-4" />
+                                    {editDate ? format(editDate, "PPP") : <span>Pick a date</span>}
+                                </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-auto p-0">
+                                    <Calendar mode="single" selected={editDate} onSelect={setEditDate} initialFocus />
+                                </PopoverContent>
+                            </Popover>
+                        </div>
+                            <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-startTime" className="text-right sr-only">Start Time</Label>
+                            <div className="col-start-2 col-span-3">
+                                <Input type="time" value={editTime} onChange={e => setEditTime(e.target.value)} required />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-duration" className="text-right">Duration (mins)</Label>
+                            <Input id="edit-duration" type="number" value={editDuration} onChange={(e) => setEditDuration(e.target.value)} className="col-span-3" required />
+                        </div>
+                        <div className="grid grid-cols-4 items-center gap-4">
+                            <Label htmlFor="edit-numberOfQuestions" className="text-right">No. of Questions</Label>
+                            <Input id="edit-numberOfQuestions" type="number" value={editNumberOfQuestions} onChange={(e) => setEditNumberOfQuestions(e.target.value)} className="col-span-3" required />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
+                        <Button type="submit" disabled={isSubmitting}>
+                            {isSubmitting ? 'Saving...' : 'Save Changes'}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     </div>
   );
 }

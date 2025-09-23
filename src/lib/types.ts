@@ -41,6 +41,7 @@ export type Exam = {
   description: string;
   startTime: Date;
   duration: number; // in minutes
+  numberOfQuestions: number;
   status: 'Scheduled' | 'In Progress' | 'Completed';
   questionIds: (string | ObjectId)[];
   assignedStudentIds?: (string | ObjectId)[];
@@ -72,3 +73,5 @@ export type ExamResult = {
     totalQuestions: number;
     completedAt: Date;
 }
+
+    

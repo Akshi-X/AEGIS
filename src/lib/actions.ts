@@ -423,7 +423,7 @@ export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 
     try {
         const examsCollection = await getExamsCollection();
         const query = filter.status ? { status: filter.status } : {};
-        const exams = await examsCollection.find(query).toArray();
+        const exams = await examsCollection.find(query).sort({ startTime: -1 }).toArray();
         return exams.map(exam => {
             const plainExam: any = { ...exam, _id: exam._id.toString() };
             if (exam.startTime) {
@@ -704,6 +704,7 @@ export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'question
         description: z.string().min(1, "Description is required"),
         startTime: z.date(),
         duration: z.number().min(1, "Duration must be positive"),
+        numberOfQuestions: z.number().min(1, "Number of questions must be at least 1"),
     });
 
     const validatedFields = examSchema.safeParse(data);
@@ -733,6 +734,42 @@ export async function scheduleExam(data: Omit<Exam, '_id' | 'status' | 'question
 }
 
 
+export async function updateExam(data: Omit<Exam, 'status' | 'questionIds' | 'assignedStudentIds'> & { id: string }) {
+    const examSchema = z.object({
+        id: z.string(),
+        title: z.string().min(1, "Title is required"),
+        description: z.string().min(1, "Description is required"),
+        startTime: z.date(),
+        duration: z.number().min(1, "Duration must be positive"),
+        numberOfQuestions: z.number().min(1, "Number of questions must be at least 1"),
+    });
+
+    const validatedFields = examSchema.safeParse(data);
+
+    if (!validatedFields.success) {
+        return { error: 'One or more fields are invalid.' };
+    }
+
+    try {
+        const examsCollection = await getExamsCollection();
+        const { id, ...examData } = validatedFields.data;
+
+        await examsCollection.updateOne(
+            { _id: new ObjectId(id) },
+            { $set: examData }
+        );
+
+        await logAdminAction('Updated Exam', { examTitle: examData.title });
+        revalidatePath('/dashboard/exams');
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error) {
+        console.error('Error updating exam:', error);
+        return { error: 'Failed to update exam.' };
+    }
+}
+
+
 export async function startExamNow(examId: string) {
     try {
         const examsCollection = await getExamsCollection();
@@ -741,9 +778,9 @@ export async function startExamNow(examId: string) {
 
         if (!exam) return { error: 'Exam not found.' };
 
-        // Get 10 random questions
+        // Get random questions based on the number specified in the exam
         const randomQuestions = await questionsCollection.aggregate([
-            { $sample: { size: 10 } }
+            { $sample: { size: exam.numberOfQuestions } }
         ]).toArray();
 
         const questionIds = randomQuestions.map(q => q._id);
@@ -761,6 +798,28 @@ export async function startExamNow(examId: string) {
     } catch (error) {
         console.error('Error starting exam:', error);
         return { error: 'Failed to start exam.' };
+    }
+}
+
+export async function endExam(examId: string) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+
+        if (!exam) return { error: 'Exam not found.' };
+
+        await examsCollection.updateOne(
+            { _id: new ObjectId(examId) },
+            { $set: { status: 'Completed' } }
+        );
+
+        await logAdminAction('Ended Exam Manually', { examTitle: exam.title });
+        revalidatePath('/dashboard/exams');
+        revalidatePath('/');
+        return { success: true };
+    } catch (error) {
+        console.error('Error ending exam:', error);
+        return { error: 'Failed to end exam.' };
     }
 }
 
@@ -837,9 +896,9 @@ export async function getExamDetails(examId: string) {
     try {
         const examsCollection = await getExamsCollection();
         const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
-        
+
         if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
-             return { exam: null, questions: [] };
+            return { exam: null, questions: [] };
         }
 
         const questions = await getQuestions(exam.questionIds as ObjectId[]);
@@ -940,5 +999,7 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
         return [];
     }
 }
+
+    
 
     
