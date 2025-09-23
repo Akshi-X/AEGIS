@@ -81,14 +81,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (pcIdentifier) {
+    if (pcIdentifier && !pcDetails?.assignedStudentId) {
       const interval = setInterval(async () => {
         await checkStatus(pcIdentifier);
       }, 5000); // Poll every 5 seconds
 
       return () => clearInterval(interval); // Cleanup on component unmount
     }
-  }, [pcIdentifier]);
+  }, [pcIdentifier, pcDetails]);
   
   const handleTryAgain = () => {
     localStorage.removeItem('pcIdentifier');
@@ -171,7 +171,6 @@ export default function Home() {
     );
   }
 
-
   return (
     <main className="flex min-h-screen flex-col items-center justify-center bg-background p-4">
       <div className="w-full max-w-md">
@@ -232,12 +231,12 @@ export default function Home() {
                   required
                   value={pcName}
                   onChange={(e) => setPcName(e.target.value)}
-                  disabled={!!pcIdentifier && currentStatus !== 'rejected'}
+                  disabled={!!pcIdentifier && currentStatus !== 'rejected' && currentStatus !== 'error'}
                 />
               </div>
             </CardContent>
             <CardFooter>
-             {currentStatus !== 'rejected' ? (
+             {currentStatus !== 'rejected' && currentStatus !== 'error' ? (
                 <Button type="submit" className="w-full" disabled={!pcName || (!!pcIdentifier && currentStatus !== 'rejected') || isPending}>
                     {isPending || isCheckingStatus || (pcIdentifier && currentStatus !== 'rejected') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {pcIdentifier && currentStatus !== 'rejected' ? 'Request Submitted' : 'Request Access'}
