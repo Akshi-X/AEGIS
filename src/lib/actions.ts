@@ -1109,20 +1109,32 @@ export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
 }
 
 function calculateLiveStatus(pc: WithId<PC> & { exam?: Exam }): PC['liveStatus'] {
-    if (pc.liveStatus === 'Finished') return 'Finished';
+    // If the student has finished, that's the final status.
+    if (pc.liveStatus === 'Finished') {
+        return 'Finished';
+    }
+
     if (pc.liveStatus === 'Attempting') {
          // Check if lastSeen is recent, e.g., within the last 30 seconds
         const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
         if (pc.lastSeen && new Date(pc.lastSeen) > thirtySecondsAgo) {
             return 'Attempting';
         }
-        // If not seen recently, maybe they are just online
+        // If not seen recently while attempting, they might just be online but idle.
         return 'Online';
     }
 
-    if (pc.exam?.status === 'In Progress') return 'Waiting';
-    if (pc.exam?.status === 'Scheduled') return 'Ready';
+    // If the assigned exam is actively in progress, the student is waiting to start.
+    if (pc.exam?.status === 'In Progress') {
+        return 'Waiting';
+    }
     
+    // If an exam is assigned but not started yet.
+    if (pc.exam?.status === 'Scheduled') {
+        return 'Ready';
+    }
+    
+    // Default status if no other conditions are met.
     return 'Online';
 }
 
@@ -1146,3 +1158,4 @@ export async function updatePcLiveStatus(pcIdentifier: string, status: PC['liveS
     }
 }
     
+
