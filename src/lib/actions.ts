@@ -226,7 +226,12 @@ async function fetchAndMapDocuments<T extends Document>(collectionName: 'student
 
 export async function getStudents(): Promise<WithId<Student>[]> {
   try {
-    return fetchAndMapDocuments<Student>('students');
+    const studentsCollection = await getStudentsCollection();
+    const students = await studentsCollection.find({}).toArray();
+    return students.map(student => ({
+        ...student,
+        _id: student._id.toString(),
+    })) as WithId<Student>[];
   } catch (error) {
     console.error('Error fetching students:', error);
     return [];
@@ -353,7 +358,12 @@ export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 
 
 export async function getAdmins(): Promise<WithId<Admin>[]> {
   try {
-    return fetchAndMapDocuments<Admin>('admins');
+    const adminsCollection = await getAdminsCollection();
+    const admins = await adminsCollection.find({}).toArray();
+     return admins.map(admin => ({
+        ...admin,
+        _id: admin._id.toString(),
+    })) as WithId<Admin>[];
   } catch (error) {
     console.error('Error fetching admins:', error);
     return [];
@@ -362,8 +372,13 @@ export async function getAdmins(): Promise<WithId<Admin>[]> {
 
 export async function getAdminLogs(): Promise<WithId<AdminLog>[]> {
   try {
-    const logs = await fetchAndMapDocuments<AdminLog>('admin_logs');
-    return logs.map(log => ({...log, timestamp: new Date(log.timestamp)}));
+    const logsCollection = await getAdminLogsCollection();
+    const logs = await logsCollection.find({}).sort({ timestamp: -1 }).toArray();
+    return logs.map(log => ({
+        ...log,
+        _id: log._id.toString(),
+        timestamp: new Date(log.timestamp),
+    })) as WithId<AdminLog>[];
   } catch (error) {
     console.error('Error fetching admin logs:', error);
     return [];
@@ -674,5 +689,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     return { error: 'Failed to assign student.' };
   }
 }
+
+    
 
     
