@@ -153,6 +153,7 @@ export async function addStudent(data: unknown) {
     name: z.string().min(1, "Name is required."),
     rollNumber: z.string().min(1, "Roll number is required."),
     classBatch: z.string().min(1, "Class/Batch is required."),
+    examId: z.string().optional(),
   });
 
   const validatedFields = studentSchema.safeParse(data);
@@ -165,7 +166,19 @@ export async function addStudent(data: unknown) {
   
   try {
     const studentsCollection = await getStudentsCollection();
-    await studentsCollection.insertOne(validatedFields.data);
+    const { examId, ...studentData } = validatedFields.data;
+
+    const result = await studentsCollection.insertOne(studentData);
+    const newStudentId = result.insertedId;
+
+    if (examId) {
+        const examsCollection = await getExamsCollection();
+        await examsCollection.updateOne(
+            { _id: new ObjectId(examId) },
+            { $addToSet: { assignedStudentIds: newStudentId } }
+        );
+    }
+
     await logAdminAction('Added Student', { studentName: validatedFields.data.name, rollNumber: validatedFields.data.rollNumber });
     revalidatePath('/dashboard/students');
     revalidatePath('/dashboard');
@@ -220,6 +233,38 @@ export async function getStudents(): Promise<WithId<Student>[]> {
   }
 }
 
+export async function deleteStudent(studentId: string): Promise<{ success: boolean; error?: string }> {
+    try {
+        const studentObjectId = new ObjectId(studentId);
+        const studentsCollection = await getStudentsCollection();
+        const pcsCollection = await getPcsCollection();
+        
+        const studentToDelete = await studentsCollection.findOne({ _id: studentObjectId });
+        if (!studentToDelete) {
+            return { success: false, error: 'Student not found.' };
+        }
+
+        // Unassign student from any PC
+        await pcsCollection.updateMany({ assignedStudentId: studentId }, { $set: { assignedStudentId: null, assignedStudentName: null, assignedStudentRollNumber: null } });
+
+        // Remove student from any exam
+        const examsCollection = await getExamsCollection();
+        await examsCollection.updateMany({}, { $pull: { assignedStudentIds: studentObjectId } });
+
+        await studentsCollection.deleteOne({ _id: studentObjectId });
+        await logAdminAction('Deleted Student', { studentName: studentToDelete.name, rollNumber: studentToDelete.rollNumber });
+        
+        revalidatePath('/dashboard/students');
+        revalidatePath('/dashboard/pcs');
+        revalidatePath('/dashboard/exams');
+        return { success: true };
+    } catch (error) {
+        console.error('Error deleting student:', error);
+        return { success: false, error: 'Failed to delete student.' };
+    }
+}
+
+
 export async function getPcs(): Promise<WithId<PC>[]> {
     const pcsCollection = await getPcsCollection();
     const pcs = await pcsCollection.aggregate([
@@ -235,7 +280,7 @@ export async function getPcs(): Promise<WithId<PC>[]> {
                                     '$_id', 
                                     { 
                                         $cond: {
-                                            if: { $ne: ['$$studentId', null] },
+                                            if: { $and: [ { $ne: ['$$studentId', null] }, { $ne: ['$$studentId', ''] }] },
                                             then: { $toObjectId: '$$studentId' },
                                             else: null
                                         }
@@ -293,15 +338,18 @@ export async function getQuestions(): Promise<WithId<Question>[]> {
 }
 
 
-export async function getExams(): Promise<WithId<Exam>[]> {
+export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 'Completed' } = {}): Promise<WithId<Exam>[]> {
     try {
-        const exams = await fetchAndMapDocuments<Exam>('exams');
-        return exams.map(exam => ({...exam, startTime: new Date(exam.startTime) }));
+        const examsCollection = await getExamsCollection();
+        const query = filter.status ? { status: filter.status } : {};
+        const exams = await examsCollection.find(query).toArray();
+        return exams.map(exam => ({...(exam as any), _id: exam._id.toString(), startTime: new Date(exam.startTime) }));
     } catch (error) {
         console.error('Error fetching exams:', error);
         return [];
     }
 }
+
 
 export async function getAdmins(): Promise<WithId<Admin>[]> {
   try {
@@ -385,7 +433,7 @@ export async function registerPc(prevState: any, formData: FormData) {
             uniqueIdentifier: uniqueIdentifier
         };
 
-        await pcsCollection.insertOne(newPc);
+        const result = await pcsCollection.insertOne(newPc);
         revalidatePath('/dashboard/pcs');
 
         return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
@@ -598,10 +646,17 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
       }
     }
 
+    const pcToUpdate = await pcsCollection.findOne({_id: new ObjectId(pcId)});
+    const studentToAssign = studentId ? await studentsCollection.findOne({_id: new ObjectId(studentId)}) : null;
+
     // Update the PC with the new assignment (or null to unassign)
     await pcsCollection.updateOne(
       { _id: new ObjectId(pcId) },
-      { $set: { assignedStudentId: studentId } }
+      { $set: { 
+          assignedStudentId: studentId,
+          assignedStudentName: studentToAssign ? studentToAssign.name : null,
+          assignedStudentRollNumber: studentToAssign ? studentToAssign.rollNumber : null,
+      } }
     );
     
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
@@ -619,6 +674,5 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     return { error: 'Failed to assign student.' };
   }
 }
-
 
     

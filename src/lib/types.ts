@@ -6,6 +6,7 @@ export type Student = {
   name: string;
   rollNumber: string;
   classBatch: string;
+  assignedExamId?: string | ObjectId;
 };
 
 export type PC = {
@@ -38,6 +39,7 @@ export type Exam = {
   duration: number; // in minutes
   status: 'Scheduled' | 'In Progress' | 'Completed';
   questionIds: (string | ObjectId)[];
+  assignedStudentIds?: (string | ObjectId)[];
 };
 
 export type Admin = {
