@@ -1,10 +1,11 @@
 
 'use client';
 
-import { useEffect, useState, useTransition } from 'react';
+import { useEffect, useState, useTransition, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { getExamDetails, submitExam, getPcStatus } from '@/lib/actions';
-import type { Question, Exam } from '@/lib/types';
+import type { Question } from '@/lib/types';
+import type { WithId } from 'mongodb';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -12,15 +13,29 @@ import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+
+
+// Define the Exam type locally as it might be slightly different from the server-side one
+// especially with dates being strings.
+type ClientExam = {
+  _id: string;
+  title: string;
+  duration: number;
+  startTime: string;
+  questionIds: string[];
+  status: 'Scheduled' | 'In Progress' | 'Completed';
+}
 
 export default function ExamPage() {
-    const [exam, setExam] = useState<Exam | null>(null);
-    const [questions, setQuestions] = useState<Question[]>([]);
+    const [exam, setExam] = useState<ClientExam | null>(null);
+    const [questions, setQuestions] = useState<WithId<Question>[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
     const [answers, setAnswers] = useState<{ questionId: string; selectedOption: number | null }[]>([]);
-    const [timeLeft, setTimeLeft] = useState<number>(0);
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, startTransition] = useTransition();
+    const [showTimeoutDialog, setShowTimeoutDialog] = useState(false);
 
     const router = useRouter();
     const params = useParams();
@@ -31,26 +46,63 @@ export default function ExamPage() {
         if (!examId) return;
 
         getExamDetails(examId).then(data => {
-            if (data) {
-                setExam(data.exam as Exam);
-                setQuestions(data.questions as Question[]);
+            if (data && data.exam) {
+                setExam(data.exam as ClientExam);
+                setQuestions(data.questions);
                 setAnswers(data.questions.map(q => ({ questionId: q._id as string, selectedOption: null })));
-                setTimeLeft(data.exam.duration * 60);
+                
+                const examEndTime = new Date(data.exam.startTime).getTime() + data.exam.duration * 60 * 1000;
+                const now = new Date().getTime();
+                const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
+                setTimeLeft(remainingTime);
             }
             setIsLoading(false);
+        }).catch(() => {
+            setIsLoading(false);
+            toast({ title: 'Error', description: 'Could not load exam details.', variant: 'destructive' });
         });
-    }, [examId]);
+    }, [examId, toast]);
     
+    const handleExamSubmit = useCallback(async () => {
+        if (isSubmitting) return;
+
+        startTransition(async () => {
+            const pcIdentifier = localStorage.getItem('pcIdentifier');
+            if (!pcIdentifier) {
+                 toast({ title: 'Error', description: 'PC identifier not found. Cannot submit exam.', variant: 'destructive' });
+                 return;
+            }
+            const pcStatus = await getPcStatus(pcIdentifier);
+            const studentId = pcStatus.pcDetails?.assignedStudentId;
+
+            if (!studentId) {
+                toast({ title: 'Error', description: 'Student not assigned to this PC. Cannot submit.', variant: 'destructive' });
+                return;
+            }
+            
+            const result = await submitExam(examId, studentId, answers);
+
+            if (result.success) {
+                toast({ title: 'Success', description: 'Exam submitted successfully!' });
+                router.push('/'); // Redirect to home/portal page
+            } else {
+                 toast({ title: 'Error', description: result.error || 'Failed to submit exam.', variant: 'destructive' });
+            }
+        });
+    }, [examId, answers, router, toast, isSubmitting]);
+
     useEffect(() => {
-        if (timeLeft > 0 && !isLoading) {
+        if (timeLeft === null || isLoading) return;
+
+        if (timeLeft > 0) {
             const timer = setInterval(() => {
-                setTimeLeft(prevTime => prevTime - 1);
+                setTimeLeft(prevTime => (prevTime ? prevTime - 1 : 0));
             }, 1000);
             return () => clearInterval(timer);
-        } else if (timeLeft === 0 && !isLoading && exam) {
-            handleExamSubmit();
+        } else if (timeLeft === 0) {
+            setShowTimeoutDialog(true);
         }
-    }, [timeLeft, isLoading, exam]);
+    }, [timeLeft, isLoading]);
 
     const handleAnswerChange = (questionId: string, optionIndex: number) => {
         setAnswers(prev => prev.map(a => a.questionId === questionId ? { ...a, selectedOption: optionIndex } : a));
@@ -67,32 +119,7 @@ export default function ExamPage() {
             setCurrentQuestionIndex(prev => prev - 1);
         }
     };
-
-    const handleExamSubmit = async () => {
-        startTransition(async () => {
-            const pcIdentifier = localStorage.getItem('pcIdentifier');
-            if (!pcIdentifier) {
-                 toast({ title: 'Error', description: 'PC identifier not found.', variant: 'destructive' });
-                 return;
-            }
-            const pcStatus = await getPcStatus(pcIdentifier);
-            const studentId = pcStatus.pcDetails?.assignedStudentId;
-
-            if (!studentId) {
-                toast({ title: 'Error', description: 'Student not assigned.', variant: 'destructive' });
-                return;
-            }
-            
-            const result = await submitExam(examId, studentId, answers);
-
-            if (result.success) {
-                toast({ title: 'Success', description: 'Exam submitted successfully.' });
-                router.push('/'); // Redirect to home/portal page
-            } else {
-                 toast({ title: 'Error', description: result.error || 'Failed to submit exam.', variant: 'destructive' });
-            }
-        });
-    };
+    
 
     if (isLoading) {
         return (
@@ -105,19 +132,42 @@ export default function ExamPage() {
     if (!exam || questions.length === 0) {
         return (
             <div className="flex h-screen items-center justify-center">
-                <p>Could not load exam details. Please try again later.</p>
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Error</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <p>Could not load exam details. The exam might not have started or there are no questions.</p>
+                         <Button onClick={() => router.push('/')} className="mt-4">Go to Portal</Button>
+                    </CardContent>
+                </Card>
             </div>
         )
     }
 
     const currentQuestion = questions[currentQuestionIndex];
     const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
-    const minutes = Math.floor(timeLeft / 60);
-    const seconds = timeLeft % 60;
+    const minutes = Math.floor((timeLeft || 0) / 60);
+    const seconds = (timeLeft || 0) % 60;
     const currentAnswer = answers.find(a => a.questionId === currentQuestion._id)?.selectedOption;
 
     return (
         <main className="flex min-h-screen flex-col items-center justify-center bg-muted/40 p-4 sm:p-8">
+            <AlertDialog open={showTimeoutDialog}>
+                 <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Time's Up!</AlertDialogTitle>
+                        <AlertDialogDescription>
+                        The exam time has run out. Your answers will now be submitted automatically.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogAction onClick={handleExamSubmit}>
+                           {isSubmitting ? 'Submitting...' : 'Submit Now'}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <div className="w-full max-w-4xl">
                 <div className="flex justify-between items-center mb-4">
                     <h1 className="text-xl font-bold">{exam.title}</h1>
@@ -164,3 +214,4 @@ export default function ExamPage() {
         </main>
     );
 }
+

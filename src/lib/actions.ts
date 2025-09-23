@@ -303,26 +303,8 @@ export async function getPcs(): Promise<WithId<PC>[]> {
         {
             $lookup: {
                 from: 'students',
-                let: { studentId: '$assignedStudentId' },
-                pipeline: [
-                    { 
-                        $match: { 
-                            $expr: { 
-                                $eq: [ 
-                                    '$_id', 
-                                    { 
-                                        $cond: {
-                                            if: { $and: [ { $ne: ['$$studentId', null] }, { $ne: ['$$studentId', ''] }] },
-                                            then: { $toObjectId: '$$studentId' },
-                                            else: null
-                                        }
-                                    } 
-                                ] 
-                            } 
-                        } 
-                    },
-                    { $project: { name: 1, rollNumber: 1, _id: 0 } }
-                ],
+                localField: 'assignedStudentId',
+                foreignField: '_id',
                 as: 'assignedStudent'
             }
         },
@@ -526,11 +508,15 @@ export async function getPcStatus(identifier: string) {
         
         if (pc.assignedStudentId) {
             const studentsCollection = await getStudentsCollection();
-            const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
+            const student = await studentsCollection.findOne({ _id: pc.assignedStudentId as ObjectId });
             
             if (student) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
+                
+                if (student.assignedExamId) {
+                    pcDetails.assignedExamId = student.assignedExamId.toString();
+                }
             }
         }
         
@@ -748,7 +734,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     if (studentId) {
         const studentObjectId = new ObjectId(studentId);
         
-        const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentId, _id: { $ne: new ObjectId(pcId) } });
+        const existingAssignment = await pcsCollection.findOne({ assignedStudentId: studentObjectId, _id: { $ne: new ObjectId(pcId) } });
         if (existingAssignment) {
             return { error: 'This student is already assigned to another PC.' };
         }
@@ -762,7 +748,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     await pcsCollection.updateOne(
       { _id: new ObjectId(pcId) },
       { $set: { 
-          assignedStudentId: studentId,
+          assignedStudentId: studentToAssign ? studentToAssign._id : null,
           assignedStudentName: studentToAssign ? studentToAssign.name : null,
           assignedStudentRollNumber: studentToAssign ? studentToAssign.rollNumber : null,
           assignedExamId: studentExamId,
@@ -777,6 +763,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     });
 
     revalidatePath('/dashboard/pcs');
+    revalidatePath('/');
     return { success: true };
   } catch (error) {
     console.error('Error assigning student to PC:', error);
@@ -793,9 +780,22 @@ export async function getExamDetails(examId: string) {
 
         const questions = await getQuestions(exam.questionIds as ObjectId[]);
         
+        // Ensure that the exam object passed to the client is serializable
+        const serializableExam = {
+             ...exam,
+            _id: exam._id.toString(),
+            startTime: exam.startTime.toISOString(),
+            questionIds: exam.questionIds.map(id => id.toString())
+        };
+
+        const serializableQuestions = questions.map(q => ({
+            ...q,
+            _id: q._id.toString()
+        }));
+
         return {
-            exam: { ...exam, _id: exam._id.toString(), startTime: exam.startTime.toISOString(), questionIds: exam.questionIds.map(id => id.toString()) },
-            questions: questions.map(q => ({...q, _id: q._id.toString() }))
+            exam: serializableExam,
+            questions: serializableQuestions
         };
 
     } catch (error) {
@@ -875,3 +875,4 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
         return [];
     }
 }
+
