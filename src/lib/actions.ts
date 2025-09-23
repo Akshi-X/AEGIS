@@ -348,11 +348,19 @@ export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 
         const examsCollection = await getExamsCollection();
         const query = filter.status ? { status: filter.status } : {};
         const exams = await examsCollection.find(query).toArray();
-        return exams.map(exam => ({
-            ...exam, 
-            _id: exam._id.toString(), 
-            startTime: exam.startTime.toISOString(),
-        })) as unknown as WithId<Exam>[];
+        return exams.map(exam => {
+            const plainExam: any = { ...exam, _id: exam._id.toString() };
+            if (exam.startTime) {
+                plainExam.startTime = exam.startTime.toISOString();
+            }
+            if (exam.assignedStudentIds) {
+                plainExam.assignedStudentIds = exam.assignedStudentIds.map(id => id.toString());
+            }
+             if (exam.questionIds) {
+                plainExam.questionIds = exam.questionIds.map(id => id.toString());
+            }
+            return plainExam;
+        }) as WithId<Exam>[];
     } catch (error) {
         console.error('Error fetching exams:', error);
         return [];
@@ -693,6 +701,8 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
     return { error: 'Failed to assign student.' };
   }
 }
+
+    
 
     
 
