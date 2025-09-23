@@ -780,6 +780,7 @@ export async function getExamDetails(examId: string) {
     try {
         const examsCollection = await getExamsCollection();
         const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+        
         if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
             return null;
         }
