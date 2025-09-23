@@ -9,6 +9,7 @@ import { WithId, Document, ObjectId } from 'mongodb';
 import type { Question, Student, PC, Exam, Admin, AdminLog, ExamResult } from './types';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
+import { useFormState } from 'react-dom';
 
 const questionSchema = z.object({
   questionText: z.string().min(10, {
@@ -1003,7 +1004,21 @@ export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
         const pcsCollection = await getPcsCollection();
         const pcs = await pcsCollection.aggregate([
             {
-                $match: { assignedStudentId: { $exists: true, $ne: null } }
+                $lookup: {
+                    from: 'exams',
+                    localField: 'assignedExamId',
+                    foreignField: '_id',
+                    as: 'exam'
+                }
+            },
+            {
+                $unwind: { path: '$exam', preserveNullAndEmptyArrays: true }
+            },
+            {
+                $match: {
+                    'assignedStudentId': { $exists: true, $ne: null },
+                    'exam.status': 'In Progress'
+                }
             },
             {
                 $lookup: {
@@ -1016,23 +1031,11 @@ export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
             {
                 $unwind: { path: '$student', preserveNullAndEmptyArrays: true }
             },
-            {
-                $lookup: {
-                    from: 'exams',
-                    localField: 'assignedExamId',
-                    foreignField: '_id',
-                    as: 'exam'
-                }
-            },
-            {
-                $unwind: { path: '$exam', preserveNullAndEmptyArrays: true }
-            },
              {
                 $addFields: {
                     'student.name': '$student.name',
                     'student.rollNumber': '$student.rollNumber',
                     'exam.title': '$exam.title',
-                    'exam.status': '$exam.status',
                 }
             },
              {
