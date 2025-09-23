@@ -385,8 +385,8 @@ export async function getExams(filter: { status?: 'Scheduled' | 'In Progress' | 
              if (exam.questionIds) {
                 plainExam.questionIds = exam.questionIds.map(id => id.toString());
             }
-            return plainExam;
-        }) as WithId<Exam>[];
+            return plainExam as WithId<Exam>;
+        });
     } catch (error) {
         console.error('Error fetching exams:', error);
         return [];
@@ -508,9 +508,9 @@ export async function getPcStatus(identifier: string) {
 
         let pcDetails: any = { ...pc, _id: pc._id.toString() };
 
-        if (pc.assignedStudentId) {
+        if (pc.assignedStudentId && typeof pc.assignedStudentId === 'string') {
             const studentsCollection = await getStudentsCollection();
-            const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId as string) });
+            const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
             
             if (student) {
                 pcDetails.assignedStudentName = student.name;
@@ -761,3 +761,6 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
 
     
 
+
+
+    
