@@ -937,11 +937,11 @@ export async function getExamDetails(examId: string, studentId: string) {
 
         const exam = await examsCollection.findOne({ _id: examObjectId });
         
-        if (!exam) {
+        if (!exam || !exam.questionIds) {
             return { exam: null, questions: [], alreadyTaken: false };
         }
         
-        if (!exam.questionIds || exam.questionIds.length === 0) {
+        if (exam.questionIds.length === 0) {
             return { exam: null, questions: [], alreadyTaken: false };
         }
 
@@ -971,41 +971,88 @@ export async function getExamDetails(examId: string, studentId: string) {
     }
 }
 
-// Live Status
 
-function calculateLiveStatus(pc: WithId<PC> & { exam?: any }) {
-    // If no student is assigned, the PC is online.
-    if (!pc.assignedStudentId) {
-        return 'Online';
-    }
+export async function submitExam(examId: string, studentId: string, answers: { questionId: string, selectedOption: number | null }[]) {
+    try {
+        const examsCollection = await getExamsCollection();
+        const questionsCollection = await getQuestionsCollection();
+        const studentsCollection = await getStudentsCollection();
+        const examResultsCollection = await getExamResultsCollection();
+        const pcsCollection = await getPcsCollection();
 
-    // If a student is assigned but the PC hasn't been seen in a while, it's considered offline.
-    const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
-    if (pc.lastSeen && new Date(pc.lastSeen) < thirtySecondsAgo) {
-        return 'Offline';
-    }
+        const examObjectId = new ObjectId(examId);
+        const studentObjectId = new ObjectId(studentId);
 
-    // If the student is actively taking the exam.
-    if (pc.exam?.status === 'In Progress') {
-        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
-        if (pc.lastSeen && new Date(pc.lastSeen) < thirtySecondsAgo) {
-            return 'Online'; // If not seen recently while attempting, they might just be idle.
+        const exam = await examsCollection.findOne({ _id: examObjectId });
+        const student = await studentsCollection.findOne({ _id: studentObjectId });
+
+        if (!exam || !student) {
+            return { error: 'Invalid exam or student.' };
         }
-        return 'Attempting';
-    }
 
-    // If the assigned exam is actively in progress, the student is waiting to start.
-    if (pc.exam?.status === 'In Progress') {
-        return 'Waiting';
+        // Prevent re-submission
+        const existingResult = await examResultsCollection.findOne({ examId: examObjectId, studentId: studentObjectId });
+        if (existingResult) {
+            return { error: 'You have already submitted this exam.' };
+        }
+        
+        const questionIds = answers.map(a => new ObjectId(a.questionId));
+        const questions = await questionsCollection.find({ _id: { $in: questionIds } }).toArray();
+        
+        let score = 0;
+        questions.forEach(q => {
+            const answer = answers.find(a => a.questionId === q._id.toString());
+            if (answer && answer.selectedOption !== null && q.correctOptions.includes(answer.selectedOption)) {
+                score += q.weight || 1;
+            }
+        });
+
+        const examResult: Omit<ExamResult, '_id'> = {
+            examId: examObjectId,
+            studentId: studentObjectId,
+            studentName: student.name,
+            examTitle: exam.title,
+            answers,
+            score,
+            totalQuestions: questions.length,
+            completedAt: new Date(),
+        };
+
+        await examResultsCollection.insertOne(examResult);
+        
+        // Update PC status to Finished
+        await pcsCollection.updateOne(
+            { assignedStudentId: studentObjectId },
+            { $set: { liveStatus: 'Finished' } }
+        );
+
+
+        revalidatePath('/dashboard/results');
+        revalidatePath('/dashboard/live-status');
+        return { success: true };
+
+    } catch (error) {
+        console.error('Error submitting exam:', error);
+        return { error: 'Failed to submit exam.' };
     }
-    
-    // If an exam is assigned but not started yet.
-    if (pc.exam?.status === 'Scheduled') {
-        return 'Ready';
+}
+
+
+export async function getExamResults(): Promise<WithId<ExamResult>[]> {
+    try {
+        const resultsCollection = await getExamResultsCollection();
+        const results = await resultsCollection.find({}).sort({ completedAt: -1 }).toArray();
+        return results.map(result => ({
+            ...result,
+            _id: result._id.toString(),
+            examId: result.examId.toString(),
+            studentId: result.studentId.toString(),
+            completedAt: new Date(result.completedAt),
+        })) as WithId<ExamResult>[];
+    } catch (error) {
+        console.error('Error fetching exam results:', error);
+        return [];
     }
-    
-    // Default status if no other conditions are met.
-    return 'Online';
 }
 
 
@@ -1028,5 +1075,65 @@ export async function updatePcLiveStatus(pcIdentifier: string, status: PC['liveS
     }
 }
     
+export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
+    try {
+        const pcsCollection = await getPcsCollection();
+        const pcs = await pcsCollection.aggregate([
+            {
+                $match: { assignedStudentId: { $exists: true, $ne: null } }
+            },
+            {
+                $lookup: {
+                    from: 'students',
+                    localField: 'assignedStudentId',
+                    foreignField: '_id',
+                    as: 'student'
+                }
+            },
+            {
+                $unwind: { path: '$student', preserveNullAndEmptyArrays: true }
+            },
+            {
+                $lookup: {
+                    from: 'exams',
+                    localField: 'assignedExamId',
+                    foreignField: '_id',
+                    as: 'exam'
+                }
+            },
+            {
+                $unwind: { path: '$exam', preserveNullAndEmptyArrays: true }
+            },
+             {
+                $addFields: {
+                    'student.name': '$student.name',
+                    'student.rollNumber': '$student.rollNumber',
+                    'exam.title': '$exam.title',
+                    'exam.status': '$exam.status',
+                }
+            },
+             {
+                $project: {
+                    'student._id': 0,
+                    'student.classBatch': 0,
+                    'student.assignedExamId': 0,
+                    'exam._id': 0,
+                    'exam.description': 0,
+                    'exam.startTime': 0,
+                    'exam.duration': 0,
+                    'exam.numberOfQuestions': 0,
+                    'exam.questionIds': 0,
+                }
+            }
+        ]).sort({ name: 1 }).toArray();
+        
+        return pcs.map(pc => {
+            const { _id, ...rest } = pc as any;
+            return { _id: _id.toString(), ...rest } as WithId<PC>;
+        });
 
-
+    } catch (error) {
+        console.error('Error fetching live PC statuses:', error);
+        return [];
+    }
+}
