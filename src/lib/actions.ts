@@ -531,20 +531,20 @@ export async function getPcStatus(identifier: string) {
             if (student) {
                 pcDetails.assignedStudentName = student.name;
                 pcDetails.assignedStudentRollNumber = student.rollNumber;
-                
-                if (student.assignedExamId) {
-                     const examsCollection = await getExamsCollection();
-                     const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
-                     if (exam) {
-                         pcDetails.exam = {
-                             _id: exam._id.toString(),
-                             title: exam.title,
-                             startTime: exam.startTime.toISOString(),
-                             duration: exam.duration,
-                             status: exam.status,
-                         };
-                     }
-                }
+            }
+        }
+        
+        if (pcDetails.assignedExamId) {
+            const examsCollection = await getExamsCollection();
+            const exam = await examsCollection.findOne({ _id: new ObjectId(pcDetails.assignedExamId) });
+            if (exam) {
+                pcDetails.exam = {
+                    _id: exam._id.toString(),
+                    title: exam.title,
+                    startTime: exam.startTime.toISOString(),
+                    duration: exam.duration,
+                    status: exam.status,
+                };
             }
         }
         
