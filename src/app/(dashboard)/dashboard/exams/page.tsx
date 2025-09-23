@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
@@ -144,7 +145,7 @@ export default function ExamsPage() {
     setEditDate(examDate);
     setEditTime(format(examDate, 'HH:mm'));
     setEditDuration(exam.duration.toString());
-    setEditNumberOfQuestions(exam.numberOfQuestions.toString());
+    setEditNumberOfQuestions(exam.numberOfQuestions?.toString() || '');
     setEditOpen(true);
   }
 
