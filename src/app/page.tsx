@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useState, useEffect, useActionState, useTransition } from 'react';
+import { useState, useEffect, useTransition } from 'react';
 import Link from 'next/link';
 import { registerPc, getPcStatus } from '@/lib/actions';
 import { Button } from '@/components/ui/button';
@@ -31,12 +31,20 @@ const initialState: ActionState = {
 
 
 export default function Home() {
-  const [state, formAction] = useActionState(registerPc, initialState);
+  const [state, setState] = useState(initialState);
+  const [isPending, startTransition] = useTransition();
   const [pcName, setPcName] = useState('');
   const [currentStatus, setCurrentStatus] = useState(state.status);
   const [pcIdentifier, setPcIdentifier] = useState<string | null>(state.pcIdentifier);
   const [pcDetails, setPcDetails] = useState<ActionState['pcDetails'] | undefined>(undefined);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
+  const handleFormAction = (formData: FormData) => {
+    startTransition(async () => {
+      const result = await registerPc(state, formData);
+      setState(result);
+    });
+  };
 
   useEffect(() => {
     const savedPcIdentifier = localStorage.getItem('pcIdentifier');
@@ -86,6 +94,7 @@ export default function Home() {
   
   const handleTryAgain = () => {
     localStorage.removeItem('pcIdentifier');
+    setState(initialState);
     setCurrentStatus('');
     setPcIdentifier(null);
     setPcName(''); 
@@ -176,7 +185,7 @@ export default function Home() {
               Enter a name for this PC to request access to the exam network.
             </CardDescription>
           </CardHeader>
-          <form action={formAction}>
+          <form action={handleFormAction}>
             <CardContent>
               {currentStatus === 'pending' && (
                 <Alert variant="default" className="bg-blue-50 border border-blue-200 text-blue-800 mb-4">
@@ -229,8 +238,8 @@ export default function Home() {
             </CardContent>
             <CardFooter>
              {currentStatus !== 'rejected' ? (
-                <Button type="submit" className="w-full" disabled={!pcName || (!!pcIdentifier && currentStatus !== 'rejected')}>
-                    {isCheckingStatus || (pcIdentifier && currentStatus !== 'rejected') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                <Button type="submit" className="w-full" disabled={!pcName || (!!pcIdentifier && currentStatus !== 'rejected') || isPending}>
+                    {isPending || isCheckingStatus || (pcIdentifier && currentStatus !== 'rejected') ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                     {pcIdentifier && currentStatus !== 'rejected' ? 'Request Submitted' : 'Request Access'}
                 </Button>
              ) : (
