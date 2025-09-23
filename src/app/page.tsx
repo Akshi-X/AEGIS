@@ -72,10 +72,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if ((currentStatus === 'pending' || currentStatus === 'approved') && pcIdentifier) {
+    if (currentStatus && (currentStatus === 'pending' || currentStatus === 'approved') && pcIdentifier) {
       const interval = setInterval(async () => {
         const newStatus = await checkStatus(pcIdentifier);
-        if (newStatus && newStatus !== 'Pending' && newStatus !== 'Approved') {
+        if (newStatus && newStatus.toLowerCase() !== 'pending' && newStatus.toLowerCase() !== 'approved') {
           clearInterval(interval);
         }
       }, 5000); // Poll every 5 seconds
