@@ -23,6 +23,8 @@ export type PC = {
   assignedStudentRollNumber?: string;
   assignedExamId?: string | ObjectId;
   examAlreadyTaken?: boolean;
+  liveStatus?: 'Online' | 'Ready' | 'Waiting' | 'Attempting' | 'Finished';
+  lastSeen?: Date;
 };
 
 export type Question = {

@@ -4,7 +4,7 @@
 
 import { useEffect, useState, useTransition, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { getExamDetails, submitExam, getPcStatus } from '@/lib/actions';
+import { getExamDetails, submitExam, getPcStatus, updatePcLiveStatus } from '@/lib/actions';
 import type { Question } from '@/lib/types';
 import type { WithId } from 'mongodb';
 import { Button } from '@/components/ui/button';
@@ -77,14 +77,14 @@ export default function ExamPage() {
             return;
         }
 
-        const fetchDetails = async () => {
-            const pcIdentifier = localStorage.getItem('pcIdentifier');
-            if (!pcIdentifier) {
-                setPageError('PC identifier not found. This device is not registered for the exam.');
-                setIsLoading(false);
-                return;
-            }
+        const pcIdentifier = localStorage.getItem('pcIdentifier');
+        if (!pcIdentifier) {
+            setPageError('PC identifier not found. This device is not registered for the exam.');
+            setIsLoading(false);
+            return;
+        }
 
+        const fetchDetails = async () => {
             const pcStatus = await getPcStatus(pcIdentifier);
             const studentId = pcStatus.pcDetails?.assignedStudentId;
 
@@ -112,6 +112,9 @@ export default function ExamPage() {
                     const now = new Date().getTime();
                     const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
                     setTimeLeft(remainingTime);
+
+                    // Start sending heartbeats
+                    updatePcLiveStatus(pcIdentifier, 'Attempting');
                 } else {
                     setPageError("The exam might not have started or there are no questions.");
                 }
@@ -124,6 +127,15 @@ export default function ExamPage() {
         };
         
         fetchDetails();
+
+         const heartbeatInterval = setInterval(() => {
+            updatePcLiveStatus(pcIdentifier, 'Attempting');
+        }, 15000); // Send heartbeat every 15 seconds
+
+        return () => {
+            clearInterval(heartbeatInterval);
+        };
+
 
     }, [examId, toast]);
 

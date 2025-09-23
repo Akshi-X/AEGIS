@@ -534,11 +534,14 @@ export async function registerPc(prevState: any, formData: FormData) {
             name: pcName,
             ipAddress: 'N/A', // IP address can be captured later
             status: 'Pending',
-            uniqueIdentifier: uniqueIdentifier
+            uniqueIdentifier: uniqueIdentifier,
+            liveStatus: 'Online',
+            lastSeen: new Date(),
         };
 
         const result = await pcsCollection.insertOne(newPc);
         revalidatePath('/dashboard/pcs');
+        revalidatePath('/dashboard/live-status');
 
         return { message: "Your PC registration request has been submitted.", status: "pending", pcIdentifier: uniqueIdentifier };
     } catch (error) {
@@ -556,6 +559,9 @@ export async function getPcStatus(identifier: string) {
         if (!pc) {
             return { status: null, pcDetails: null };
         }
+        
+        // Update lastSeen timestamp
+        await pcsCollection.updateOne({ _id: pc._id }, { $set: { lastSeen: new Date() }});
 
         let pcDetails: any = { 
             ...pc, 
@@ -580,6 +586,7 @@ export async function getPcStatus(identifier: string) {
             }
         }
         
+        // Fallback to PC's assigned exam if student doesn't have one.
         if (!examIdToLookup && pc.assignedExamId) {
             examIdToLookup = pc.assignedExamId;
         }
@@ -628,6 +635,7 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
     await pcsCollection.updateOne({ _id: new ObjectId(pcId) }, { $set: { status } });
     await logAdminAction(`PC Status Updated`, { pcName: pc?.name, newStatus: status });
     revalidatePath('/dashboard/pcs');
+    revalidatePath('/dashboard/live-status');
     return { success: true };
   } catch (error) {
     console.error('Error updating PC status:', error);
@@ -643,6 +651,7 @@ export async function deletePc(pcId: string) {
         await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
         await logAdminAction(`PC Deleted`, { pcName: pc?.name });
         revalidatePath('/dashboard/pcs');
+        revalidatePath('/dashboard/live-status');
         return { success: true };
     } catch (error) {
         console.error('Error deleting PC:', error);
@@ -810,6 +819,7 @@ export async function startExamNow(examId: string) {
         revalidatePath('/dashboard/exams');
         revalidatePath('/dashboard');
         revalidatePath('/');
+        revalidatePath('/dashboard/live-status');
         return { success: true };
     } catch (error) {
         console.error('Error starting exam:', error);
@@ -832,6 +842,7 @@ export async function endExam(examId: string) {
         await logAdminAction('Ended Exam Manually', { examTitle: exam.title });
         revalidatePath('/dashboard/exams');
         revalidatePath('/');
+        revalidatePath('/dashboard/live-status');
         return { success: true };
     } catch (error) {
         console.error('Error ending exam:', error);
@@ -888,6 +899,8 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
       { $set: { 
           assignedStudentId: studentObjectId,
           assignedExamId: studentExamId,
+          liveStatus: studentObjectId ? 'Ready' : 'Online',
+          lastSeen: new Date(),
       } }
     );
     
@@ -900,6 +913,7 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
 
     revalidatePath('/dashboard/pcs');
     revalidatePath('/');
+    revalidatePath('/dashboard/live-status');
     return { success: true };
   } catch (error) {
     console.error('Error assigning student to PC:', error);
@@ -928,7 +942,11 @@ export async function getExamDetails(examId: string, studentId: string) {
 
         const exam = await examsCollection.findOne({ _id: examObjectId });
         
-        if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
+        if (!exam) {
+            return { exam: null, questions: [], alreadyTaken: false };
+        }
+        
+        if (!exam.questionIds || exam.questionIds.length === 0) {
             return { exam: null, questions: [], alreadyTaken: false };
         }
 
@@ -963,9 +981,13 @@ export async function submitExam(examId: string, studentId: string, answers: { q
         const examsCollection = await getExamsCollection();
         const studentsCollection = await getStudentsCollection();
         const resultsCollection = await getExamResultsCollection();
+        const pcsCollection = await getPcsCollection();
 
-        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
-        const student = await studentsCollection.findOne({ _id: new ObjectId(studentId) });
+        const examObjectId = new ObjectId(examId);
+        const studentObjectId = new ObjectId(studentId);
+
+        const exam = await examsCollection.findOne({ _id: examObjectId });
+        const student = await studentsCollection.findOne({ _id: studentObjectId });
 
         if (!exam || !student) {
             throw new Error('Exam or student not found.');
@@ -998,11 +1020,14 @@ export async function submitExam(examId: string, studentId: string, answers: { q
         const insertedResult = await resultsCollection.insertOne(result);
         
         await studentsCollection.updateOne({ _id: student._id }, { $set: { examResultId: insertedResult.insertedId }});
-        // Do not mark exam as completed here, as other students might be taking it.
-        // This should be handled by a separate process that checks if all assigned students have finished.
+        
+        // Update PC live status to Finished
+        await pcsCollection.updateOne({ assignedStudentId: studentObjectId }, { $set: { liveStatus: 'Finished' } });
+
 
         await logAdminAction('Exam Submitted', { studentName: student.name, examTitle: exam.title, score });
         revalidatePath('/dashboard/results');
+        revalidatePath('/dashboard/live-status');
         
         return { success: true, resultId: insertedResult.insertedId.toString() };
     } catch(error) {
@@ -1031,8 +1056,93 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
     }
 }
 
-    
+export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
+    const pcsCollection = await getPcsCollection();
+    const pcs = await pcsCollection.aggregate([
+        {
+            $match: { assignedStudentId: { $exists: true, $ne: null } }
+        },
+        {
+            $lookup: {
+                from: 'students',
+                localField: 'assignedStudentId',
+                foreignField: '_id',
+                as: 'student'
+            }
+        },
+        { $unwind: '$student' },
+        {
+            $lookup: {
+                from: 'exams',
+                localField: 'assignedExamId',
+                foreignField: '_id',
+                as: 'exam'
+            }
+        },
+        { 
+            $unwind: {
+                path: '$exam',
+                preserveNullAndEmptyArrays: true
+            }
+        },
+        {
+            $project: {
+                name: 1,
+                liveStatus: 1,
+                lastSeen: 1,
+                'student.name': 1,
+                'student.rollNumber': 1,
+                'exam.title': 1,
+                'exam.status': 1
+            }
+        }
+    ]).toArray();
 
-    
+    return pcs.map(pc => {
+        const liveStatus = calculateLiveStatus(pc as any);
+        return {
+            ...pc,
+            _id: (pc._id as ObjectId).toString(),
+            liveStatus: liveStatus
+        } as WithId<PC>;
+    });
+}
 
+function calculateLiveStatus(pc: WithId<PC> & { exam?: Exam }): PC['liveStatus'] {
+    if (pc.liveStatus === 'Finished') return 'Finished';
+    if (pc.liveStatus === 'Attempting') {
+         // Check if lastSeen is recent, e.g., within the last 30 seconds
+        const thirtySecondsAgo = new Date(Date.now() - 30 * 1000);
+        if (pc.lastSeen && new Date(pc.lastSeen) > thirtySecondsAgo) {
+            return 'Attempting';
+        }
+        // If not seen recently, maybe they are just online
+        return 'Online';
+    }
+
+    if (pc.exam?.status === 'In Progress') return 'Waiting';
+    if (pc.exam?.status === 'Scheduled') return 'Ready';
+    
+    return 'Online';
+}
+
+
+export async function updatePcLiveStatus(pcIdentifier: string, status: PC['liveStatus']) {
+    try {
+        const pcsCollection = await getPcsCollection();
+        const result = await pcsCollection.updateOne(
+            { uniqueIdentifier: pcIdentifier },
+            { $set: { liveStatus: status, lastSeen: new Date() } }
+        );
+
+        if (result.modifiedCount > 0) {
+            revalidatePath('/dashboard/live-status');
+            return { success: true };
+        }
+        return { success: false, error: "PC not found or status not changed." };
+    } catch (error) {
+        console.error('Error updating PC live status:', error);
+        return { success: false, error: 'Failed to update status.' };
+    }
+}
     

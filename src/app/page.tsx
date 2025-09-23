@@ -42,7 +42,7 @@ export default function Home() {
 
   const handleFormAction = (formData: FormData) => {
     startTransition(async () => {
-      const result = await registerPc(state, formData);
+      const result = await registerPc(undefined, formData);
       setState(result);
     });
   };
@@ -81,17 +81,14 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (currentStatus && (currentStatus === 'pending' || currentStatus === 'approved') && pcIdentifier) {
+    if (pcIdentifier) {
       const interval = setInterval(async () => {
-        const newStatus = await checkStatus(pcIdentifier);
-        if (newStatus && typeof newStatus === 'string' && newStatus.toLowerCase() !== 'pending' && newStatus.toLowerCase() !== 'approved') {
-          clearInterval(interval);
-        }
+        await checkStatus(pcIdentifier);
       }, 5000); // Poll every 5 seconds
 
       return () => clearInterval(interval); // Cleanup on component unmount
     }
-  }, [currentStatus, pcIdentifier]);
+  }, [pcIdentifier]);
   
   const handleTryAgain = () => {
     localStorage.removeItem('pcIdentifier');

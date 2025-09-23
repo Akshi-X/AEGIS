@@ -3,7 +3,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users, Settings, History, BarChart } from 'lucide-react';
+import { ClipboardList, FileQuestion, LayoutDashboard, Monitor, Users, Settings, History, BarChart, Wifi } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import {
@@ -20,6 +20,7 @@ const navItems = [
   { href: '/dashboard/students', icon: Users, label: 'Students' },
   { href: '/dashboard/questions', icon: FileQuestion, label: 'Questions' },
   { href: '/dashboard/exams', icon: ClipboardList, label: 'Exams' },
+  { href: '/dashboard/live-status', icon: Wifi, label: 'Live Status' },
   { href: '/dashboard/results', icon: BarChart, label: 'Results' },
   { href: '/dashboard/logs', icon: History, label: 'Logs'},
   { href: '/dashboard/settings', icon: Settings, label: 'Settings' },
