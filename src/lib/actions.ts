@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { suggestQuestionTags } from '@/ai/flows/suggest-question-tags';
@@ -780,7 +781,7 @@ export async function startExamNow(examId: string) {
 
         // Get random questions based on the number specified in the exam
         const randomQuestions = await questionsCollection.aggregate([
-            { $sample: { size: exam.numberOfQuestions } }
+            { $sample: { size: exam.numberOfQuestions || 10 } }
         ]).toArray();
 
         const questionIds = randomQuestions.map(q => q._id);
@@ -892,18 +893,32 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
 }
 
 
-export async function getExamDetails(examId: string) {
+export async function getExamDetails(examId: string, studentId: string) {
     try {
         const examsCollection = await getExamsCollection();
-        const exam = await examsCollection.findOne({ _id: new ObjectId(examId) });
+        const examResultsCollection = await getExamResultsCollection();
+        
+        const examObjectId = new ObjectId(examId);
+        const studentObjectId = new ObjectId(studentId);
 
+        // Check if the student has already taken this exam
+        const existingResult = await examResultsCollection.findOne({
+            examId: examObjectId,
+            studentId: studentObjectId,
+        });
+
+        if (existingResult) {
+            return { exam: null, questions: [], alreadyTaken: true };
+        }
+
+        const exam = await examsCollection.findOne({ _id: examObjectId });
+        
         if (!exam || !exam.questionIds || exam.questionIds.length === 0) {
-            return { exam: null, questions: [] };
+            return { exam: null, questions: [], alreadyTaken: false };
         }
 
         const questions = await getQuestions(exam.questionIds as ObjectId[]);
         
-        // Ensure that the exam object passed to the client is serializable
         const serializableExam = {
              ...exam,
             _id: exam._id.toString(),
@@ -918,12 +933,13 @@ export async function getExamDetails(examId: string) {
 
         return {
             exam: serializableExam,
-            questions: serializableQuestions
+            questions: serializableQuestions,
+            alreadyTaken: false,
         };
 
     } catch (error) {
         console.error('Error fetching exam details:', error);
-        return { exam: null, questions: [] };
+        return { exam: null, questions: [], alreadyTaken: false };
     }
 }
 
@@ -999,6 +1015,8 @@ export async function getExamResults(): Promise<WithId<ExamResult>[]> {
         return [];
     }
 }
+
+    
 
     
 

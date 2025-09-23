@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useEffect, useState, useTransition, useCallback } from 'react';
@@ -11,7 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Progress } from '@/components/ui/progress';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShieldCheck } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -34,6 +35,8 @@ export default function ExamPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, startTransition] = useTransition();
     const [showTimeoutDialog, setShowTimeoutDialog] = useState(false);
+    const [pageError, setPageError] = useState<string | null>(null);
+    const [alreadyTaken, setAlreadyTaken] = useState(false);
 
     const router = useRouter();
     const params = useParams();
@@ -74,22 +77,54 @@ export default function ExamPage() {
             return;
         }
 
-        getExamDetails(examId).then(data => {
-            if (data && data.exam && data.questions.length > 0) {
-                setExam(data.exam as ClientExam);
-                setQuestions(data.questions);
-                setAnswers(data.questions.map(q => ({ questionId: q._id as string, selectedOption: null })));
-                
-                const examEndTime = new Date(data.exam.startTime).getTime() + data.exam.duration * 60 * 1000;
-                const now = new Date().getTime();
-                const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
-                setTimeLeft(remainingTime);
+        const fetchDetails = async () => {
+            const pcIdentifier = localStorage.getItem('pcIdentifier');
+            if (!pcIdentifier) {
+                setPageError('PC identifier not found. This device is not registered for the exam.');
+                setIsLoading(false);
+                return;
             }
-            setIsLoading(false);
-        }).catch(() => {
-            setIsLoading(false);
-            toast({ title: 'Error', description: 'Could not load exam details.', variant: 'destructive' });
-        });
+
+            const pcStatus = await getPcStatus(pcIdentifier);
+            const studentId = pcStatus.pcDetails?.assignedStudentId;
+
+            if (!studentId) {
+                setPageError('No student is assigned to this PC. Please contact an administrator.');
+                setIsLoading(false);
+                return;
+            }
+
+            try {
+                const data = await getExamDetails(examId, studentId);
+                
+                if (data.alreadyTaken) {
+                    setAlreadyTaken(true);
+                    setIsLoading(false);
+                    return;
+                }
+
+                if (data && data.exam && data.questions.length > 0) {
+                    setExam(data.exam as ClientExam);
+                    setQuestions(data.questions);
+                    setAnswers(data.questions.map(q => ({ questionId: q._id as string, selectedOption: null })));
+                    
+                    const examEndTime = new Date(data.exam.startTime).getTime() + data.exam.duration * 60 * 1000;
+                    const now = new Date().getTime();
+                    const remainingTime = Math.max(0, Math.floor((examEndTime - now) / 1000));
+                    setTimeLeft(remainingTime);
+                } else {
+                    setPageError("The exam might not have started or there are no questions.");
+                }
+            } catch (e) {
+                toast({ title: 'Error', description: 'Could not load exam details.', variant: 'destructive' });
+                 setPageError("An error occurred while loading exam details.");
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        
+        fetchDetails();
+
     }, [examId, toast]);
 
     useEffect(() => {
@@ -131,8 +166,27 @@ export default function ExamPage() {
             </div>
         );
     }
+
+     if (alreadyTaken) {
+        return (
+            <div className="flex h-screen items-center justify-center p-4 text-center">
+                <Card className="max-w-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center justify-center gap-2">
+                           <ShieldCheck className="h-6 w-6 text-green-500"/> Exam Already Completed
+                        </CardTitle>
+                        <CardDescription>You have already submitted this exam.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <p>Your submission has been recorded. You cannot take this exam again. If you believe this is an error, please contact an administrator.</p>
+                         <Button onClick={() => router.push('/')} className="mt-4">Go Back to Portal</Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
     
-    if (!exam || questions.length === 0) {
+    if (pageError || !exam || questions.length === 0) {
         return (
             <div className="flex h-screen items-center justify-center p-4 text-center">
                 <Card className="max-w-md">
@@ -141,7 +195,7 @@ export default function ExamPage() {
                         <CardDescription>We couldn't load the exam details.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <p>This could be because the exam hasn't started yet, or no questions have been assigned by the administrator. Please wait or contact an admin if you believe this is an error.</p>
+                        <p>{pageError || "This could be because the exam hasn't started yet, or no questions have been assigned by the administrator. Please wait or contact an admin if you believe this is an error."}</p>
                          <Button onClick={() => router.push('/')} className="mt-4">Go Back to Portal</Button>
                     </CardContent>
                 </Card>
@@ -220,5 +274,7 @@ export default function ExamPage() {
         </main>
     );
 }
+
+    
 
     
