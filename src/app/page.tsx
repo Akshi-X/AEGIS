@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import { useState, useEffect, useTransition } from 'react';
@@ -20,7 +21,7 @@ type ActionState = {
   message: string;
   status: string;
   pcIdentifier: string | null;
-  pcDetails?: PC & { exam?: { _id: string; title: string; startTime: string; duration: number; status: string } };
+  pcDetails?: PC & { exam?: { _id: string; title: string; startTime: string; duration: number; status: string }, examAlreadyTaken?: boolean };
 };
 
 const initialState: ActionState = {
@@ -156,7 +157,9 @@ export default function Home() {
                         </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-2">
-                         {pcDetails.exam?.status === 'In Progress' ? (
+                        {pcDetails.examAlreadyTaken ? (
+                            <p className="text-center text-sm text-green-500 font-semibold w-full">You have already completed this exam.</p>
+                         ) : pcDetails.exam?.status === 'In Progress' ? (
                             <Link href={`/exam/${pcDetails.exam._id}`} className="w-full">
                                 <Button className="w-full">Start Exam</Button>
                             </Link>

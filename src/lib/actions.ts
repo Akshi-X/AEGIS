@@ -564,10 +564,12 @@ export async function getPcStatus(identifier: string) {
         };
         
         let examIdToLookup: ObjectId | string | undefined;
-
+        let studentIdToLookup: ObjectId | string | undefined;
+        
         if (pc.assignedStudentId) {
             const studentsCollection = await getStudentsCollection();
-            const student = await studentsCollection.findOne({ _id: pc.assignedStudentId as ObjectId });
+            studentIdToLookup = pc.assignedStudentId as ObjectId;
+            const student = await studentsCollection.findOne({ _id: studentIdToLookup });
             
             if (student) {
                 pcDetails.assignedStudentName = student.name;
@@ -584,7 +586,11 @@ export async function getPcStatus(identifier: string) {
 
         if (examIdToLookup) {
             const examsCollection = await getExamsCollection();
-            const exam = await examsCollection.findOne({ _id: new ObjectId(examIdToLookup) });
+            const examResultsCollection = await getExamResultsCollection();
+            
+            const examObjectId = new ObjectId(examIdToLookup);
+            const exam = await examsCollection.findOne({ _id: examObjectId });
+
             if (exam) {
                 pcDetails.exam = {
                     _id: exam._id.toString(),
@@ -593,6 +599,15 @@ export async function getPcStatus(identifier: string) {
                     duration: exam.duration,
                     status: exam.status,
                 };
+
+                if (studentIdToLookup) {
+                    const studentObjectId = new ObjectId(studentIdToLookup);
+                    const existingResult = await examResultsCollection.findOne({
+                        examId: examObjectId,
+                        studentId: studentObjectId,
+                    });
+                    pcDetails.examAlreadyTaken = !!existingResult;
+                }
             }
         }
         

@@ -22,6 +22,7 @@ export type PC = {
   assignedStudentName?: string;
   assignedStudentRollNumber?: string;
   assignedExamId?: string | ObjectId;
+  examAlreadyTaken?: boolean;
 };
 
 export type Question = {
