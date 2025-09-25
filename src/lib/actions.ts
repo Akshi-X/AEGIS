@@ -1170,5 +1170,3 @@ export async function bulkAssignExamToStudents(studentIds: string[], examId: str
         return { success: false, error: 'Failed to assign exam to students.' };
     }
 }
-
-    

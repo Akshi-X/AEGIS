@@ -475,7 +475,7 @@ export default function StudentsPage() {
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        <SelectItem value="">Not Assigned</SelectItem>
+                                        <SelectItem value="unassigned">Not Assigned</SelectItem>
                                         {scheduledExams.map(exam => (
                                             <SelectItem key={exam._id as string} value={exam._id as string}>
                                                 {exam.title}
