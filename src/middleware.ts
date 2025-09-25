@@ -16,27 +16,21 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
   }
 
-  // If user is authenticated...
-  if (hasAuth) {
-    // and tries to access the root registration page, redirect to dashboard
-    if (pathname === '/') {
-        return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
-    // otherwise, allow access to dashboard pages
-    return NextResponse.next();
+  // Allow access to the root registration page
+  if (pathname === '/') {
+      return NextResponse.next();
   }
 
-  // If user is not authenticated...
-  if (!hasAuth) {
-    // and tries to access a protected dashboard route, redirect to login
-    if (pathname.startsWith('/dashboard')) {
-        return NextResponse.redirect(new URL('/login', request.url));
-    }
-    // and is on the root page, allow them to stay for PC registration
-    if (pathname === '/') {
-        return NextResponse.next();
-    }
+  // If user is not authenticated and trying to access dashboard, redirect to login
+  if (!hasAuth && pathname.startsWith('/dashboard')) {
+      return NextResponse.redirect(new URL('/login', request.url));
   }
+ 
+  // If user is authenticated and on a dashboard page, allow them
+  if (hasAuth && pathname.startsWith('/dashboard')) {
+      return NextResponse.next();
+  }
+
  
   return NextResponse.next();
 }
@@ -44,5 +38,3 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: ['/dashboard/:path*', '/login', '/', '/exam/:path*'],
 }
-
-    

@@ -473,59 +473,80 @@ export async function getPcStatus(identifier: string) {
         if (!identifier) return { status: null, pcDetails: null };
 
         const pcsCollection = await getPcsCollection();
-
-        // First, check if it's an approved PC
         const pc = await pcsCollection.findOne({ uniqueIdentifier: identifier });
+
         if (pc) {
-            // It's an approved PC. Update last seen and fetch all related details.
             await pcsCollection.updateOne({ _id: pc._id }, { $set: { lastSeen: new Date() }});
 
-            let pcDetails: any = { 
-                ...pc, 
-                _id: pc._id.toString(),
-            };
-            
-            // If a student is assigned, fetch their details and their exam details
-            if (pc.assignedStudentId) {
-                pcDetails.assignedStudentId = pc.assignedStudentId.toString();
-                const studentsCollection = await getStudentsCollection();
-                const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
-                
-                if (student) {
-                    pcDetails.assignedStudentName = student.name;
-                    pcDetails.assignedStudentRollNumber = student.rollNumber;
-                    
-                    // Now find the exam assigned to that student
-                    if (student.assignedExamId) {
-                        const examsCollection = await getExamsCollection();
-                        const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
-                        if (exam) {
-                            pcDetails.exam = {
-                                _id: exam._id.toString(),
-                                title: exam.title,
-                                status: exam.status,
-                            };
+            const pcWithDetailsCursor = pcsCollection.aggregate([
+                { $match: { _id: pc._id } },
+                {
+                    $lookup: {
+                        from: 'students',
+                        localField: 'assignedStudentId',
+                        foreignField: '_id',
+                        as: 'assignedStudent'
+                    }
+                },
+                { $unwind: { path: '$assignedStudent', preserveNullAndEmptyArrays: true } },
+                {
+                    $lookup: {
+                        from: 'exams',
+                        localField: 'assignedStudent.assignedExamId',
+                        foreignField: '_id',
+                        as: 'exam'
+                    }
+                },
+                { $unwind: { path: '$exam', preserveNullAndEmptyArrays: true } },
+                {
+                    $addFields: {
+                        assignedStudentName: '$assignedStudent.name',
+                        assignedStudentRollNumber: '$assignedStudent.rollNumber',
+                    }
+                },
+                {
+                    $project: { // Project only the necessary fields to reduce payload
+                        name: 1,
+                        status: 1,
+                        liveStatus: 1,
+                        lastSeen: 1,
+                        uniqueIdentifier: 1,
+                        assignedStudentId: 1,
+                        assignedStudentName: 1,
+                        assignedStudentRollNumber: 1,
+                        exam: {
+                            _id: '$exam._id',
+                            title: '$exam.title',
+                            status: '$exam.status',
                         }
                     }
                 }
+            ]);
+
+            const pcWithDetailsArray = await pcWithDetailsCursor.toArray();
+            if (pcWithDetailsArray.length > 0) {
+                const pcDetails = pcWithDetailsArray[0];
+                 // Ensure exam object is not empty if there's no exam
+                if (!pcDetails.exam?._id) {
+                    pcDetails.exam = null;
+                }
+                return { status: pc.status, pcDetails: JSON.parse(JSON.stringify(pcDetails)) };
             }
             
-            return { status: pc.status, pcDetails };
+            return { status: pc.status, pcDetails: JSON.parse(JSON.stringify(pc)) };
         }
 
-        // If not found in approved PCs, check pending requests
         const pcRequestsCollection = await getPcRequestsCollection();
         const pcRequest = await pcRequestsCollection.findOne({ uniqueIdentifier: identifier });
         if (pcRequest) {
             return { status: 'Pending', pcDetails: null };
         }
 
-        // If not found anywhere, it's an unknown PC
         return { status: null, pcDetails: null };
 
     } catch (error) {
         console.error('Error fetching PC status:', error);
-        return { status: null, pcDetails: null };
+        return { status: null, pcDetails: null, error: "Database error" };
     }
 }
 
@@ -536,12 +557,9 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
 
     if (status === 'Rejected') {
-        // If rejecting an approved PC, we can just delete it or move it to another state
-        // For now, let's just delete it to keep it simple.
         await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
          await logAdminAction(`PC Rejected and Removed`, { pcName: pc?.name });
     }
-    // 'Approve' case is handled by approvePcRequest
 
     revalidatePath('/dashboard/pcs');
     return { success: true };
@@ -1075,7 +1093,7 @@ export async function approvePcRequest(requestId: string) {
             return { success: false, error: "Request not found." };
         }
 
-        const newPc = {
+        const newPc: Omit<PC, '_id'> = {
             name: request.name,
             uniqueIdentifier: request.uniqueIdentifier,
             ipAddress: 'N/A', // IP address can be updated later
