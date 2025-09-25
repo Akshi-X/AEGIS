@@ -71,7 +71,7 @@ export default function StudentsPage() {
 
     const fetchStudentsAndExams = () => {
         getStudents().then(setStudents);
-        getExams({ status: 'Scheduled' }).then(setScheduledExams as any);
+        getExams({ status: 'Scheduled' }).then(setScheduledExams);
     };
 
     useEffect(() => {
@@ -475,7 +475,7 @@ export default function StudentsPage() {
                                         </SelectTrigger>
                                     </FormControl>
                                     <SelectContent>
-                                        <SelectItem value="unassigned">Not Assigned</SelectItem>
+                                        <SelectItem value="">Not Assigned</SelectItem>
                                         {scheduledExams.map(exam => (
                                             <SelectItem key={exam._id as string} value={exam._id as string}>
                                                 {exam.title}
@@ -500,5 +500,3 @@ export default function StudentsPage() {
     </>
   );
 }
-
-    
