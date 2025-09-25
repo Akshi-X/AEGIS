@@ -33,7 +33,8 @@ export default function Home() {
     const storedIdentifier = localStorage.getItem('pcIdentifier');
     if (storedIdentifier) {
       setPcIdentifier(storedIdentifier);
-      setStatus('PENDING_APPROVAL'); // Assume pending and let polling correct it
+      // Immediately start polling to get the real status
+      fetchStatus(storedIdentifier); 
     }
   }, []);
 
@@ -45,7 +46,7 @@ export default function Home() {
         
         if (result.status === 'Approved') {
             setPcDetails(result.pcDetails);
-            if (result.pcDetails?.assignedStudentId && result.pcDetails?.exam?.title) {
+            if (result.pcDetails?.assignedStudentId && (result.pcDetails as any).exam?.title) {
                 setStatus('READY');
             } else {
                 setStatus('APPROVED_UNASSIGNED');
@@ -55,28 +56,26 @@ export default function Home() {
         } else if (result.status === 'Rejected') {
             setErrorMessage('Your PC registration request has been rejected. Please contact an administrator.');
             setStatus('ERROR');
-            // Clear local storage if rejected to allow re-registration
             localStorage.removeItem('pcIdentifier');
             setPcIdentifier(null);
         }
 
     } catch (e) {
       console.error(e);
-      setErrorMessage("Could not connect to the server to get status. Retrying...");
-      // Don't set error state, just show a temporary message and retry
+      // Don't set a persistent error, just log it. The polling will retry.
     } finally {
         setIsPolling(false);
     }
   }, [isPolling]);
 
   useEffect(() => {
-    if (pcIdentifier && (status === 'PENDING_APPROVAL' || status === 'APPROVED_UNASSIGNED')) {
+    if (pcIdentifier) {
       const interval = setInterval(() => {
         fetchStatus(pcIdentifier);
       }, 5000); // Poll every 5 seconds
       return () => clearInterval(interval);
     }
-  }, [pcIdentifier, status, fetchStatus]);
+  }, [pcIdentifier, fetchStatus]);
 
 
   const handleRegister = async (formData: FormData) => {
@@ -172,7 +171,7 @@ export default function Home() {
                         <CardDescription>{currentMessage.description}</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-xs text-muted-foreground">Your screen will update automatically. Please do not close this window.</p>
+                        <p className="text-xs text-muted-foreground">This screen will update automatically. Please do not close this window.</p>
                     </CardContent>
                 </Card>
             </div>
@@ -233,5 +232,3 @@ export default function Home() {
     </main>
   );
 }
-
-    

@@ -472,46 +472,41 @@ export async function getPcStatus(identifier: string) {
     try {
         if (!identifier) return { status: null, pcDetails: null };
 
-        const pcRequestsCollection = await getPcRequestsCollection();
         const pcsCollection = await getPcsCollection();
 
         // First, check if it's an approved PC
         const pc = await pcsCollection.findOne({ uniqueIdentifier: identifier });
         if (pc) {
-            // It's an approved PC. Fetch all details.
+            // It's an approved PC. Update last seen and fetch all related details.
             await pcsCollection.updateOne({ _id: pc._id }, { $set: { lastSeen: new Date() }});
 
             let pcDetails: any = { 
                 ...pc, 
                 _id: pc._id.toString(),
-                assignedStudentId: pc.assignedStudentId?.toString() || null,
             };
             
-            let examIdToLookup: ObjectId | string | undefined;
-            
+            // If a student is assigned, fetch their details and their exam details
             if (pc.assignedStudentId) {
+                pcDetails.assignedStudentId = pc.assignedStudentId.toString();
                 const studentsCollection = await getStudentsCollection();
                 const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
                 
                 if (student) {
                     pcDetails.assignedStudentName = student.name;
                     pcDetails.assignedStudentRollNumber = student.rollNumber;
+                    
+                    // Now find the exam assigned to that student
                     if (student.assignedExamId) {
-                        examIdToLookup = student.assignedExamId;
+                        const examsCollection = await getExamsCollection();
+                        const exam = await examsCollection.findOne({ _id: new ObjectId(student.assignedExamId) });
+                        if (exam) {
+                            pcDetails.exam = {
+                                _id: exam._id.toString(),
+                                title: exam.title,
+                                status: exam.status,
+                            };
+                        }
                     }
-                }
-            }
-            
-            if (examIdToLookup) {
-                const examsCollection = await getExamsCollection();
-                const exam = await examsCollection.findOne({ _id: new ObjectId(examIdToLookup) });
-
-                if (exam) {
-                    pcDetails.exam = {
-                        _id: exam._id.toString(),
-                        title: exam.title,
-                        status: exam.status,
-                    };
                 }
             }
             
@@ -519,6 +514,7 @@ export async function getPcStatus(identifier: string) {
         }
 
         // If not found in approved PCs, check pending requests
+        const pcRequestsCollection = await getPcRequestsCollection();
         const pcRequest = await pcRequestsCollection.findOne({ uniqueIdentifier: identifier });
         if (pcRequest) {
             return { status: 'Pending', pcDetails: null };
@@ -1082,7 +1078,7 @@ export async function approvePcRequest(requestId: string) {
         const newPc = {
             name: request.name,
             uniqueIdentifier: request.uniqueIdentifier,
-            ipAddress: 'N/A',
+            ipAddress: 'N/A', // IP address can be updated later
             status: 'Approved',
             liveStatus: 'Online',
             lastSeen: new Date(),
@@ -1123,5 +1119,3 @@ export async function rejectPcRequest(requestId: string) {
         return { success: false, error: "Failed to reject PC request." };
     }
 }
-
-    
