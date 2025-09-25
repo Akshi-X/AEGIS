@@ -1,3 +1,4 @@
+
 'use server';
 
 import { MongoClient, ServerApiVersion } from 'mongodb';
@@ -38,6 +39,11 @@ export async function getPcsCollection() {
     return db.collection('pcs');
 }
 
+export async function getPcRequestsCollection() {
+    const db = await getDb();
+    return db.collection('pc_requests');
+}
+
 export async function getQuestionsCollection() {
     const db = await getDb();
     return db.collection('questions');
@@ -62,3 +68,5 @@ export async function getExamResultsCollection() {
     const db = await getDb();
     return db.collection('exam_results');
 }
+
+    

@@ -2,13 +2,13 @@
 'use server';
 
 import { z } from 'zod';
-import { getAdminsCollection, getAdminLogsCollection, getExamResultsCollection, getExamsCollection, getPcsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
+import { getAdminsCollection, getAdminLogsCollection, getExamResultsCollection, getExamsCollection, getPcsCollection, getPcRequestsCollection, getQuestionsCollection, getStudentsCollection } from './mongodb';
 import { revalidatePath } from 'next/cache';
 import { WithId, Document, ObjectId } from 'mongodb';
 import type { Question, Student, PC, Exam, Admin, AdminLog, ExamResult } from './types';
 import { redirect } from 'next/navigation';
 import { cookies } from 'next/headers';
-import { useFormState } from 'react-dom';
+
 
 const questionSchema = z.object({
   questionText: z.string().min(10, {
@@ -450,23 +450,17 @@ export async function registerPc(prevState: any, formData: FormData) {
     }
 
     try {
-        const pcsCollection = await getPcsCollection();
-        const uniqueIdentifier = `pc-id-${generateRandomString(8)}`;
+        const pcRequestsCollection = await getPcRequestsCollection();
+        const uniqueIdentifier = `pc-id-${generateRandomString(12)}`;
         
-        const newPc: Omit<PC, '_id'> = {
+        await pcRequestsCollection.insertOne({
             name: pcName,
-            ipAddress: 'N/A', // IP address can be captured later
-            status: 'Pending',
-            uniqueIdentifier: uniqueIdentifier,
-            liveStatus: 'Online',
-            lastSeen: new Date(),
-        };
-
-        await pcsCollection.insertOne(newPc);
+            uniqueIdentifier,
+            requestedAt: new Date(),
+        });
         revalidatePath('/dashboard/pcs');
-        revalidatePath('/dashboard/live-status');
 
-        return { message: `PC "${pcName}" has been submitted for approval.`, status: "success" };
+        return { message: `PC "${pcName}" has been submitted for approval.`, status: "success", identifier: uniqueIdentifier };
     } catch (error) {
         console.error('PC Registration Error:', error);
         return { message: "An error occurred while registering your PC. Please try again.", status: "error" };
@@ -476,67 +470,62 @@ export async function registerPc(prevState: any, formData: FormData) {
 
 export async function getPcStatus(identifier: string) {
     try {
+        if (!identifier) return { status: null, pcDetails: null };
+
+        const pcRequestsCollection = await getPcRequestsCollection();
         const pcsCollection = await getPcsCollection();
+
+        // First, check if it's an approved PC
         const pc = await pcsCollection.findOne({ uniqueIdentifier: identifier });
+        if (pc) {
+            // It's an approved PC. Fetch all details.
+            await pcsCollection.updateOne({ _id: pc._id }, { $set: { lastSeen: new Date() }});
 
-        if (!pc) {
-            return { status: null, pcDetails: null };
-        }
-        
-        // Update lastSeen timestamp
-        await pcsCollection.updateOne({ _id: pc._id }, { $set: { lastSeen: new Date() }});
-
-        let pcDetails: any = { 
-            ...pc, 
-            _id: pc._id.toString(),
-            assignedStudentId: pc.assignedStudentId?.toString() || null,
-        };
-        
-        let examIdToLookup: ObjectId | string | undefined;
-        let studentIdToLookup: ObjectId | string | undefined;
-        
-        if (pc.assignedStudentId) {
-            const studentsCollection = await getStudentsCollection();
-            studentIdToLookup = pc.assignedStudentId as ObjectId;
-            const student = await studentsCollection.findOne({ _id: studentIdToLookup });
+            let pcDetails: any = { 
+                ...pc, 
+                _id: pc._id.toString(),
+                assignedStudentId: pc.assignedStudentId?.toString() || null,
+            };
             
-            if (student) {
-                pcDetails.assignedStudentName = student.name;
-                pcDetails.assignedStudentRollNumber = student.rollNumber;
-                if (student.assignedExamId) {
-                    examIdToLookup = student.assignedExamId;
+            let examIdToLookup: ObjectId | string | undefined;
+            
+            if (pc.assignedStudentId) {
+                const studentsCollection = await getStudentsCollection();
+                const student = await studentsCollection.findOne({ _id: new ObjectId(pc.assignedStudentId) });
+                
+                if (student) {
+                    pcDetails.assignedStudentName = student.name;
+                    pcDetails.assignedStudentRollNumber = student.rollNumber;
+                    if (student.assignedExamId) {
+                        examIdToLookup = student.assignedExamId;
+                    }
                 }
             }
-        }
-        
-        if (examIdToLookup) {
-            const examsCollection = await getExamsCollection();
-            const examResultsCollection = await getExamResultsCollection();
             
-            const examObjectId = new ObjectId(examIdToLookup);
-            const exam = await examsCollection.findOne({ _id: examObjectId });
+            if (examIdToLookup) {
+                const examsCollection = await getExamsCollection();
+                const exam = await examsCollection.findOne({ _id: new ObjectId(examIdToLookup) });
 
-            if (exam) {
-                pcDetails.exam = {
-                    _id: exam._id.toString(),
-                    title: exam.title,
-                    startTime: exam.startTime.toISOString(),
-                    duration: exam.duration,
-                    status: exam.status,
-                };
-
-                if (studentIdToLookup) {
-                    const studentObjectId = new ObjectId(studentIdToLookup);
-                    const existingResult = await examResultsCollection.findOne({
-                        examId: examObjectId,
-                        studentId: studentObjectId,
-                    });
-                    pcDetails.examAlreadyTaken = !!existingResult;
+                if (exam) {
+                    pcDetails.exam = {
+                        _id: exam._id.toString(),
+                        title: exam.title,
+                        status: exam.status,
+                    };
                 }
             }
+            
+            return { status: pc.status, pcDetails };
         }
-        
-        return { status: pc.status, pcDetails };
+
+        // If not found in approved PCs, check pending requests
+        const pcRequest = await pcRequestsCollection.findOne({ uniqueIdentifier: identifier });
+        if (pcRequest) {
+            return { status: 'Pending', pcDetails: null };
+        }
+
+        // If not found anywhere, it's an unknown PC
+        return { status: null, pcDetails: null };
 
     } catch (error) {
         console.error('Error fetching PC status:', error);
@@ -550,10 +539,15 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
     const pcsCollection = await getPcsCollection();
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
 
-    await pcsCollection.updateOne({ _id: new ObjectId(pcId) }, { $set: { status } });
-    await logAdminAction(`PC Status Updated`, { pcName: pc?.name, newStatus: status });
+    if (status === 'Rejected') {
+        // If rejecting an approved PC, we can just delete it or move it to another state
+        // For now, let's just delete it to keep it simple.
+        await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
+         await logAdminAction(`PC Rejected and Removed`, { pcName: pc?.name });
+    }
+    // 'Approve' case is handled by approvePcRequest
+
     revalidatePath('/dashboard/pcs');
-    revalidatePath('/dashboard/live-status');
     return { success: true };
   } catch (error) {
     console.error('Error updating PC status:', error);
@@ -831,7 +825,6 @@ export async function assignStudentToPc(pcId: string, studentId: string | null) 
 
     revalidatePath('/dashboard/pcs');
     revalidatePath('/');
-    revalidatePath('/dashboard/live-status');
     return { success: true };
   } catch (error) {
     console.error('Error assigning student to PC:', error);
@@ -1062,3 +1055,73 @@ export async function getLivePcStatuses(): Promise<WithId<PC>[]> {
         return [];
     }
 }
+
+export async function getPcRequests() {
+    const pcRequestsCollection = await getPcRequestsCollection();
+    const requests = await pcRequestsCollection.find({}).sort({ requestedAt: -1 }).toArray();
+    return requests.map(req => ({
+        ...req,
+        _id: req._id.toString(),
+    }));
+}
+
+export async function approvePcRequest(requestId: string) {
+    try {
+        if (!ObjectId.isValid(requestId)) {
+            return { success: false, error: "Invalid request ID format." };
+        }
+        const pcRequestsCollection = await getPcRequestsCollection();
+        const pcsCollection = await getPcsCollection();
+        
+        const request = await pcRequestsCollection.findOne({ _id: new ObjectId(requestId) });
+
+        if (!request) {
+            return { success: false, error: "Request not found." };
+        }
+
+        const newPc = {
+            name: request.name,
+            uniqueIdentifier: request.uniqueIdentifier,
+            ipAddress: 'N/A',
+            status: 'Approved',
+            liveStatus: 'Online',
+            lastSeen: new Date(),
+        };
+
+        await pcsCollection.insertOne(newPc as any);
+        await pcRequestsCollection.deleteOne({ _id: new ObjectId(requestId) });
+
+        await logAdminAction('Approved PC Request', { pcName: request.name });
+        revalidatePath('/dashboard/pcs');
+        revalidatePath('/');
+        return { success: true };
+    } catch (error) {
+        console.error('Error approving PC request:', error);
+        return { success: false, error: "Failed to approve PC request." };
+    }
+}
+
+export async function rejectPcRequest(requestId: string) {
+    try {
+        if (!ObjectId.isValid(requestId)) {
+            return { success: false, error: "Invalid request ID format." };
+        }
+        const pcRequestsCollection = await getPcRequestsCollection();
+        const request = await pcRequestsCollection.findOne({ _id: new ObjectId(requestId) });
+
+        if (!request) {
+            return { success: false, error: "Request not found." };
+        }
+
+        await pcRequestsCollection.deleteOne({ _id: new ObjectId(requestId) });
+
+        await logAdminAction('Rejected PC Request', { pcName: request.name });
+        revalidatePath('/dashboard/pcs');
+        return { success: true };
+    } catch (error) {
+        console.error('Error rejecting PC request:', error);
+        return { success: false, error: "Failed to reject PC request." };
+    }
+}
+
+    

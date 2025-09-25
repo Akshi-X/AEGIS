@@ -1,6 +1,6 @@
 
 'use client';
-import { getPcs, updatePcStatus, deletePc, getStudents, assignStudentToPc } from '@/lib/actions';
+import { getPcs, updatePcStatus, deletePc, getStudents, assignStudentToPc, getPcRequests, approvePcRequest, rejectPcRequest } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -17,20 +17,21 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { MoreHorizontal, User, ChevronsUpDown } from 'lucide-react';
+import { MoreHorizontal, User, ChevronsUpDown, CheckCircle, XCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useEffect, useState, useTransition } from 'react';
 import type { PC, Student } from '@/lib/types';
 import type { WithId } from 'mongodb';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 
 
 export default function PCsPage() {
   const [pcs, setPcs] = useState<WithId<PC>[]>([]);
+  const [pcRequests, setPcRequests] = useState<WithId<any>[]>([]);
   const [students, setStudents] = useState<WithId<Student>[]>([]);
   const [isPending, startTransition] = useTransition();
   const { toast } = useToast();
@@ -44,6 +45,7 @@ export default function PCsPage() {
   const fetchPcsAndStudents = () => {
     getPcs().then(setPcs);
     getStudents().then(setStudents);
+    getPcRequests().then(setPcRequests);
   };
 
   useEffect(() => {
@@ -72,6 +74,24 @@ export default function PCsPage() {
     });
   }
 
+  const handleRequestAction = (requestId: string, action: 'approve' | 'reject') => {
+    startTransition(async () => {
+        let result;
+        if (action === 'approve') {
+            result = await approvePcRequest(requestId);
+        } else {
+            result = await rejectPcRequest(requestId);
+        }
+
+        if (result?.success) {
+            toast({ title: 'Success', description: `PC request has been ${action}d.` });
+            fetchPcsAndStudents();
+        } else {
+            toast({ title: 'Error', description: result?.error || `Failed to ${action} PC request.`, variant: 'destructive' });
+        }
+    });
+  }
+
   const handleOpenAssignDialog = (pc: WithId<PC>) => {
     setSelectedPc(pc);
     setSelectedStudentId(pc.assignedStudentId?.toString() || null);
@@ -96,12 +116,57 @@ export default function PCsPage() {
   const selectedStudentName = selectedStudentId ? students.find(s => s._id.toString() === selectedStudentId)?.name : 'Unassigned';
 
   return (
-    <>
+    <div className="flex flex-col gap-8">
     <Card>
       <CardHeader>
-        <CardTitle>PC Management</CardTitle>
+        <CardTitle>Pending PC Requests</CardTitle>
         <CardDescription>
-          View, approve, and manage all registered PCs connecting to the exam network.
+          Approve or reject new PCs requesting to join the exam network.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>PC Name</TableHead>
+              <TableHead>Request Time</TableHead>
+              <TableHead>Identifier</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {pcRequests.map((req) => (
+              <TableRow key={req._id as string}>
+                <TableCell className="font-medium">{req.name}</TableCell>
+                <TableCell>{new Date(req.requestedAt).toLocaleString()}</TableCell>
+                <TableCell className="font-mono text-xs">{req.uniqueIdentifier}</TableCell>
+                <TableCell className="text-right">
+                    <Button variant="ghost" size="icon" onClick={() => handleRequestAction(req._id.toString(), 'approve')} disabled={isPending}>
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                    </Button>
+                    <Button variant="ghost" size="icon" onClick={() => handleRequestAction(req._id.toString(), 'reject')} disabled={isPending}>
+                        <XCircle className="h-5 w-5 text-red-500" />
+                    </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+             {pcRequests.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={4} className="h-24 text-center">
+                        No pending PC requests.
+                    </TableCell>
+                </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+    
+    <Card>
+      <CardHeader>
+        <CardTitle>Approved PCs</CardTitle>
+        <CardDescription>
+          View, assign, and manage all approved PCs.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -165,9 +230,6 @@ export default function PCsPage() {
                        {pc.status === 'Approved' && (
                         <DropdownMenuItem onClick={() => handleOpenAssignDialog(pc)}>Assign Student</DropdownMenuItem>
                       )}
-                      {pc.status !== 'Approved' && (
-                        <DropdownMenuItem onClick={() => handleAction(pc._id as string, 'approve')}>Approve</DropdownMenuItem>
-                      )}
                       {pc.status !== 'Rejected' && (
                         <DropdownMenuItem onClick={() => handleAction(pc._id as string, 'reject')}>Reject</DropdownMenuItem>
                       )}
@@ -179,6 +241,13 @@ export default function PCsPage() {
                 </TableCell>
               </TableRow>
             ))}
+             {pcs.length === 0 && (
+                <TableRow>
+                    <TableCell colSpan={6} className="h-24 text-center">
+                        No approved PCs found.
+                    </TableCell>
+                </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>
@@ -233,6 +302,8 @@ export default function PCsPage() {
             </DialogFooter>
         </DialogContent>
     </Dialog>
-    </>
+    </div>
   );
 }
+
+    
