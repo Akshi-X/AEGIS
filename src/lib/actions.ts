@@ -500,13 +500,33 @@ export async function getPcStatus(identifier: string) {
                 },
                 { $unwind: { path: '$exam', preserveNullAndEmptyArrays: true } },
                 {
-                    $addFields: {
-                        assignedStudentName: '$assignedStudent.name',
-                        assignedStudentRollNumber: '$assignedStudent.rollNumber',
+                    $lookup: {
+                        from: 'exam_results',
+                        let: { student_id: '$assignedStudent._id', exam_id: '$exam._id' },
+                        pipeline: [
+                            {
+                                $match: {
+                                    $expr: {
+                                        $and: [
+                                            { $eq: ['$studentId', '$$student_id'] },
+                                            { $eq: ['$examId', '$$exam_id'] }
+                                        ]
+                                    }
+                                }
+                            }
+                        ],
+                        as: 'examResult'
                     }
                 },
                 {
-                    $project: { // Project only the necessary fields to reduce payload
+                    $addFields: {
+                        assignedStudentName: '$assignedStudent.name',
+                        assignedStudentRollNumber: '$assignedStudent.rollNumber',
+                        examAlreadyTaken: { $gt: [{ $size: '$examResult' }, 0] }
+                    }
+                },
+                {
+                    $project: { 
                         name: 1,
                         status: 1,
                         liveStatus: 1,
@@ -515,6 +535,7 @@ export async function getPcStatus(identifier: string) {
                         assignedStudentId: 1,
                         assignedStudentName: 1,
                         assignedStudentRollNumber: 1,
+                        examAlreadyTaken: 1,
                         exam: {
                             _id: '$exam._id',
                             title: '$exam.title',
@@ -531,6 +552,13 @@ export async function getPcStatus(identifier: string) {
                 if (!pcDetails.exam?._id) {
                     pcDetails.exam = null;
                 }
+                
+                // If exam has been taken, update the liveStatus to Finished
+                if (pcDetails.examAlreadyTaken && pc.liveStatus !== 'Finished') {
+                    await pcsCollection.updateOne({ _id: pc._id }, { $set: { liveStatus: 'Finished' } });
+                    pcDetails.liveStatus = 'Finished';
+                }
+                
                 return { status: pc.status, pcDetails: JSON.parse(JSON.stringify(pcDetails)) };
             }
             

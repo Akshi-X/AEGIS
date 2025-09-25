@@ -9,18 +9,18 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { AlertTriangle, Loader2, User, ClipboardList } from 'lucide-react';
+import { AlertTriangle, Loader2, User, ClipboardList, ShieldCheck } from 'lucide-react';
 import { Logo } from '@/components/icons';
 import { Badge } from '@/components/ui/badge';
 import type { PC } from '@/lib/types';
 
 
-type PageStatus = 'REGISTER' | 'PENDING_APPROVAL' | 'APPROVED_UNASSIGNED' | 'READY' | 'ERROR';
+type PageStatus = 'REGISTER' | 'PENDING_APPROVAL' | 'APPROVED_UNASSIGNED' | 'READY' | 'FINISHED' | 'ERROR';
 
 export default function Home() {
   const [pcIdentifier, setPcIdentifier] = useState<string | null>(null);
   const [status, setStatus] = useState<PageStatus>('REGISTER');
-  const [pcDetails, setPcDetails] = useState<PC | null>(null);
+  const [pcDetails, setPcDetails] = useState<any | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, startSubmitting] = useTransition();
   const [isPolling, setIsPolling] = useState(false);
@@ -37,7 +37,10 @@ export default function Home() {
         if (result.status === 'Approved' && result.pcDetails) {
             setPcDetails(result.pcDetails);
             const typedPcDetails = result.pcDetails as any;
-            if (typedPcDetails.assignedStudentId && typedPcDetails.exam?.title) {
+            
+            if (typedPcDetails.liveStatus === 'Finished' || typedPcDetails.examAlreadyTaken) {
+                setStatus('FINISHED');
+            } else if (typedPcDetails.assignedStudentId && typedPcDetails.exam?.title) {
                 setStatus('READY');
                  if (typedPcDetails.exam.status === 'In Progress') {
                     updatePcLiveStatus(identifier, 'Ready');
@@ -79,13 +82,13 @@ export default function Home() {
 
 
   useEffect(() => {
-    if (pcIdentifier && !isPolling) {
+    if (pcIdentifier && !isPolling && status !== 'FINISHED') {
       const interval = setInterval(() => {
         fetchStatus(pcIdentifier);
       }, 5000); 
       return () => clearInterval(interval);
     }
-  }, [pcIdentifier, fetchStatus, isPolling]);
+  }, [pcIdentifier, fetchStatus, isPolling, status]);
 
 
   const handleRegister = async (formData: FormData) => {
@@ -110,8 +113,24 @@ export default function Home() {
 
   const renderContent = () => {
     switch (status) {
+        case 'FINISHED':
+             return (
+                <div className="w-full max-w-lg text-center">
+                     <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center justify-center gap-2">
+                               <ShieldCheck className="h-6 w-6 text-green-500"/> Exam Completed
+                            </CardTitle>
+                            <CardDescription>Your submission has been recorded.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <p>Thank you for taking the exam. You may now wait for further instructions from the administrator. Please do not close this window unless instructed.</p>
+                        </CardContent>
+                    </Card>
+                </div>
+            );
         case 'READY':
-            const exam = (pcDetails as any)?.exam;
+            const exam = pcDetails?.exam;
             return (
                 <div className="w-full max-w-lg">
                     <div className="flex justify-center mb-6">
