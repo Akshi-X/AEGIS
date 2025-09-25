@@ -1,4 +1,5 @@
 
+
 'use server';
 
 import { z } from 'zod';
@@ -1137,3 +1138,37 @@ export async function rejectPcRequest(requestId: string) {
         return { success: false, error: "Failed to reject PC request." };
     }
 }
+
+export async function bulkAssignExamToStudents(studentIds: string[], examId: string) {
+    if (!studentIds || studentIds.length === 0 || !examId) {
+        return { success: false, error: "Invalid student IDs or exam ID." };
+    }
+    
+    try {
+        const studentsCollection = await getStudentsCollection();
+        const examsCollection = await getExamsCollection();
+        
+        const studentObjectIds = studentIds.map(id => new ObjectId(id));
+        const examObjectId = new ObjectId(examId);
+
+        const exam = await examsCollection.findOne({ _id: examObjectId });
+        if (!exam) {
+            return { success: false, error: "Exam not found." };
+        }
+
+        const result = await studentsCollection.updateMany(
+            { _id: { $in: studentObjectIds } },
+            { $set: { assignedExamId: examObjectId } }
+        );
+
+        await logAdminAction('Bulk Assigned Exam', { examTitle: exam.title, studentCount: result.modifiedCount });
+        revalidatePath('/dashboard/students');
+        return { success: true, modifiedCount: result.modifiedCount };
+
+    } catch (error) {
+        console.error('Error bulk assigning exam:', error);
+        return { success: false, error: 'Failed to assign exam to students.' };
+    }
+}
+
+    

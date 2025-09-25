@@ -1,6 +1,7 @@
 
+
 'use client';
-import { getStudents, addStudent, deleteStudent, getExams, updateStudent } from '@/lib/actions';
+import { getStudents, addStudent, deleteStudent, getExams, updateStudent, bulkAssignExamToStudents } from '@/lib/actions';
 import {
   Table,
   TableBody,
@@ -41,6 +42,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 
 
 const studentSchema = z.object({
@@ -60,7 +62,10 @@ export default function StudentsPage() {
     const [scheduledExams, setScheduledExams] = useState<WithId<Exam>[]>([]);
     const [addDialogOpen, setAddDialogOpen] = useState(false);
     const [editDialogOpen, setEditDialogOpen] = useState(false);
+    const [bulkAssignDialogOpen, setBulkAssignDialogOpen] = useState(false);
     const [studentToEdit, setStudentToEdit] = useState<WithId<Student> | null>(null);
+    const [selectedStudentIds, setSelectedStudentIds] = useState<string[]>([]);
+    const [bulkAssignExamId, setBulkAssignExamId] = useState('');
     const [isPending, startTransition] = useTransition();
     const { toast } = useToast();
 
@@ -142,6 +147,42 @@ export default function StudentsPage() {
         });
     }
 
+    const handleSelectStudent = (studentId: string, checked: boolean | 'indeterminate') => {
+        if (checked) {
+            setSelectedStudentIds(prev => [...prev, studentId]);
+        } else {
+            setSelectedStudentIds(prev => prev.filter(id => id !== studentId));
+        }
+    };
+
+    const handleSelectAll = (checked: boolean | 'indeterminate') => {
+        if (checked) {
+            setSelectedStudentIds(students.map(s => s._id.toString()));
+        } else {
+            setSelectedStudentIds([]);
+        }
+    };
+
+    const handleBulkAssign = async () => {
+        if (selectedStudentIds.length === 0 || !bulkAssignExamId) {
+            toast({ title: 'Error', description: 'Please select students and an exam.', variant: 'destructive' });
+            return;
+        }
+
+        startTransition(async () => {
+            const result = await bulkAssignExamToStudents(selectedStudentIds, bulkAssignExamId);
+            if (result.success) {
+                toast({ title: 'Success', description: `${result.modifiedCount} students have been assigned to the exam.` });
+                fetchStudentsAndExams();
+                setSelectedStudentIds([]);
+                setBulkAssignExamId('');
+                setBulkAssignDialogOpen(false);
+            } else {
+                toast({ title: 'Error', description: result.error || 'Failed to assign exam.', variant: 'destructive' });
+            }
+        });
+    };
+
 
   return (
     <>
@@ -155,6 +196,42 @@ export default function StudentsPage() {
                     </CardDescription>
                 </div>
                 <div className="flex gap-2">
+                     <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button variant="outline" disabled={selectedStudentIds.length === 0}>
+                                <ClipboardList className="mr-2 h-4 w-4" />
+                                Assign Exam to Selected ({selectedStudentIds.length})
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Bulk Assign Exam</DialogTitle>
+                                <DialogDescription>
+                                    Assign an exam to the {selectedStudentIds.length} selected students.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                               <Select onValueChange={setBulkAssignExamId} value={bulkAssignExamId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a scheduled exam" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {scheduledExams.map(exam => (
+                                            <SelectItem key={exam._id as string} value={exam._id as string}>
+                                                {exam.title}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setBulkAssignDialogOpen(false)}>Cancel</Button>
+                                <Button onClick={handleBulkAssign} disabled={isPending || !bulkAssignExamId}>
+                                    {isPending ? 'Assigning...' : 'Assign Exam'}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                     <Dialog>
                         <DialogTrigger asChild>
                             <Button variant="outline"><Upload className="mr-2 h-4 w-4" /> Import CSV</Button>
@@ -261,6 +338,13 @@ export default function StudentsPage() {
             <Table>
             <TableHeader>
                 <TableRow>
+                 <TableHead padding="checkbox">
+                    <Checkbox
+                        checked={selectedStudentIds.length === students.length && students.length > 0}
+                        onCheckedChange={(checked) => handleSelectAll(checked)}
+                        aria-label="Select all"
+                    />
+                </TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Roll Number</TableHead>
                 <TableHead>Class / Batch</TableHead>
@@ -270,7 +354,16 @@ export default function StudentsPage() {
             </TableHeader>
             <TableBody>
                 {students.map((student) => (
-                <TableRow key={student._id as string}>
+                <TableRow key={student._id as string}
+                    data-state={selectedStudentIds.includes(student._id.toString()) && "selected"}
+                >
+                     <TableCell padding="checkbox">
+                        <Checkbox
+                            checked={selectedStudentIds.includes(student._id.toString())}
+                            onCheckedChange={(checked) => handleSelectStudent(student._id.toString(), checked)}
+                            aria-label={`Select student ${student.name}`}
+                        />
+                    </TableCell>
                     <TableCell className="font-medium">{student.name}</TableCell>
                     <TableCell>{student.rollNumber}</TableCell>
                     <TableCell>{student.classBatch}</TableCell>
