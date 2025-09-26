@@ -585,9 +585,53 @@ export async function updatePcStatus(pcId: string, status: 'Approved' | 'Rejecte
     const pcsCollection = await getPcsCollection();
     const pc = await pcsCollection.findOne({ _id: new ObjectId(pcId) });
 
+    if (!pc) {
+      return { success: false, error: 'PC not found.' };
+    }
+
     if (status === 'Rejected') {
         await pcsCollection.deleteOne({ _id: new ObjectId(pcId) });
-         await logAdminAction(`PC Rejected and Removed`, { pcName: pc?.name });
+        await logAdminAction(`PC Rejected and Removed`, { pcName: pc?.name });
+    } else if (status === 'Approved') {
+        const updateData: any = { 
+            status: 'Approved', 
+            liveStatus: 'Online', 
+            lastSeen: new Date() 
+        };
+        
+        // If PC doesn't have a macAddress, assign one
+        if (!pc.macAddress) {
+            let uniqueMacAddress = generateUniqueMacAddress();
+            
+            // Ensure the MAC address is truly unique
+            while (await pcsCollection.findOne({ macAddress: uniqueMacAddress, _id: { $ne: pc._id } })) {
+                uniqueMacAddress = generateUniqueMacAddress();
+            }
+            
+            updateData.macAddress = uniqueMacAddress;
+        }
+        
+        // If PC doesn't have a deviceToken, assign one
+        if (!pc.deviceToken) {
+            let uniqueDeviceToken = generateUniqueDeviceToken();
+            
+            // Ensure the device token is truly unique
+            while (await pcsCollection.findOne({ deviceToken: uniqueDeviceToken, _id: { $ne: pc._id } })) {
+                uniqueDeviceToken = generateUniqueDeviceToken();
+            }
+            
+            updateData.deviceToken = uniqueDeviceToken;
+        }
+        
+        await pcsCollection.updateOne(
+          { _id: new ObjectId(pcId) },
+          { $set: updateData }
+        );
+        await logAdminAction(`PC Approved`, { 
+            pcName: pc?.name, 
+            macAddress: updateData.macAddress, 
+            deviceToken: updateData.deviceToken 
+        });
     }
 
     revalidatePath('/dashboard/pcs');
@@ -1108,11 +1152,67 @@ export async function getPcRequests() {
     }));
 }
 
+// Generate a unique MAC address-like string
+function generateUniqueMacAddress(): string {
+    const generateHexPair = () => Math.floor(Math.random() * 256).toString(16).padStart(2, '0');
+    return Array.from({ length: 6 }, generateHexPair).join(':').toUpperCase();
+}
+
+// Generate a unique device token
+function generateUniqueDeviceToken(): string {
+    return 'dev-' + Math.random().toString(36).substring(2) + '-' + Date.now().toString(36);
+}
+
+// One-time function to fix existing PCs with null macAddress or deviceToken
+export async function fixExistingPcMacAddresses() {
+    try {
+        const pcsCollection = await getPcsCollection();
+        
+        // Find all PCs without macAddress/deviceToken or with null values
+        const pcsToFix = await pcsCollection.find({ 
+            $or: [
+                { macAddress: null },
+                { macAddress: { $exists: false } },
+                { deviceToken: null },
+                { deviceToken: { $exists: false } }
+            ]
+        }).toArray();
+
+        console.log(`Found ${pcsToFix.length} PCs to fix`);
+
+        for (const pc of pcsToFix) {
+            const updateData: any = {};
+            
+            if (!pc.macAddress) {
+                updateData.macAddress = generateUniqueMacAddress();
+            }
+            
+            if (!pc.deviceToken) {
+                updateData.deviceToken = generateUniqueDeviceToken();
+            }
+            
+            if (Object.keys(updateData).length > 0) {
+                await pcsCollection.updateOne(
+                    { _id: pc._id },
+                    { $set: updateData }
+                );
+                console.log(`Fixed PC ${pc.name} with:`, updateData);
+            }
+        }
+
+        return { success: true, fixedCount: pcsToFix.length };
+    } catch (error) {
+        console.error('Error fixing PC fields:', error);
+        return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    }
+}
+
 export async function approvePcRequest(requestId: string) {
     try {
         if (!ObjectId.isValid(requestId)) {
             return { success: false, error: "Invalid request ID format." };
         }
+        
         const pcRequestsCollection = await getPcRequestsCollection();
         const pcsCollection = await getPcsCollection();
         
@@ -1122,25 +1222,51 @@ export async function approvePcRequest(requestId: string) {
             return { success: false, error: "Request not found." };
         }
 
-        const newPc: Omit<PC, '_id'> = {
+        // Check if PC with same uniqueIdentifier already exists
+        const existingPc = await pcsCollection.findOne({ uniqueIdentifier: request.uniqueIdentifier });
+        if (existingPc) {
+            return { success: false, error: "PC with this identifier already exists." };
+        }
+
+        // Generate unique values for all constrained fields
+        let uniqueMacAddress = generateUniqueMacAddress();
+        let uniqueDeviceToken = generateUniqueDeviceToken();
+        
+        // Ensure the MAC address is truly unique
+        while (await pcsCollection.findOne({ macAddress: uniqueMacAddress })) {
+            uniqueMacAddress = generateUniqueMacAddress();
+        }
+        
+        // Ensure the device token is truly unique
+        while (await pcsCollection.findOne({ deviceToken: uniqueDeviceToken })) {
+            uniqueDeviceToken = generateUniqueDeviceToken();
+        }
+
+        const newPc: any = {
             name: request.name,
             uniqueIdentifier: request.uniqueIdentifier,
-            ipAddress: 'N/A', // IP address can be updated later
+            ipAddress: 'N/A',
+            macAddress: uniqueMacAddress,
+            deviceToken: uniqueDeviceToken,
             status: 'Approved',
             liveStatus: 'Online',
             lastSeen: new Date(),
         };
 
-        await pcsCollection.insertOne(newPc as any);
+        await pcsCollection.insertOne(newPc);
         await pcRequestsCollection.deleteOne({ _id: new ObjectId(requestId) });
 
-        await logAdminAction('Approved PC Request', { pcName: request.name });
+        await logAdminAction('Approved PC Request', { 
+            pcName: request.name, 
+            macAddress: uniqueMacAddress, 
+            deviceToken: uniqueDeviceToken 
+        });
         revalidatePath('/dashboard/pcs');
         revalidatePath('/');
         return { success: true };
     } catch (error) {
         console.error('Error approving PC request:', error);
-        return { success: false, error: "Failed to approve PC request." };
+        return { success: false, error: `Failed to approve PC request: ${error instanceof Error ? error.message : 'Unknown error'}` };
     }
 }
 

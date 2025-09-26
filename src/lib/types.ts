@@ -16,6 +16,8 @@ export type PC = {
   _id?: string | ObjectId;
   name: string;
   ipAddress: string;
+  macAddress?: string; // Optional MAC address field
+  deviceToken?: string; // Optional device token field  
   status: 'Pending' | 'Approved' | 'Rejected';
   uniqueIdentifier: string;
   assignedStudentId?: string | ObjectId;
